@@ -24,6 +24,12 @@ upload -> check‑in -> start forecast -> poll -> save results.
 I often need simple forecasts to kick off projects. This CLI lets me start
 immediately from the terminal (or CI) without setting up a Python stack.
 
+<div align="center">
+
+![CLI demo](.github/assets/demo.gif)
+
+</div>
+
 ## Use futureEXPERT for more
 
 For advanced workflows (covariates, analytics, pandas exports, plotting, rich
