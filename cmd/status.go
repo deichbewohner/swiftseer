@@ -9,12 +9,12 @@ import (
 )
 
 func StatusCmd(args []string) error {
-    cfgManager, err := config.NewManager()
+	cfgManager, err := config.NewManager()
 	if err != nil {
 		return fmt.Errorf("failed to create config manager: %w", err)
 	}
 
-    cfg, err := cfgManager.Load()
+	cfg, err := cfgManager.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
@@ -22,7 +22,7 @@ func StatusCmd(args []string) error {
 	fmt.Printf("\n%s\n", ui.TitleStyle.Render("Configuration Status"))
 	fmt.Printf("  Config file: %s\n\n", ui.InfoStyle.Render(cfgManager.GetConfigPath()))
 
-    fmt.Println(ui.HighlightStyle.Render("User Configuration:"))
+	fmt.Println(ui.HighlightStyle.Render("User Configuration:"))
 	if cfg.Username != "" {
 		fmt.Printf("  Username: %s\n", cfg.Username)
 	} else {
@@ -43,7 +43,7 @@ func StatusCmd(args []string) error {
 
 	fmt.Println()
 
-    fmt.Println(ui.HighlightStyle.Render("Authentication:"))
+	fmt.Println(ui.HighlightStyle.Render("Authentication:"))
 	if cfg.RefreshToken == "" {
 		fmt.Printf("  Status: %s\n", ui.ErrorStyle.Render("Not logged in"))
 		fmt.Printf("\n  %s\n\n", ui.InfoStyle.Render("Run 'swiftseer login' to authenticate"))

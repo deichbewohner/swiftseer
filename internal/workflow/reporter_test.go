@@ -13,9 +13,9 @@ func TestJSONReporter_Encode(t *testing.T) {
 
 	at := time.Unix(0, 0).UTC()
 
-    rep.OnEvent(Event{At: at, Stage: StageUpload, Kind: KindStart})
+	rep.OnEvent(Event{At: at, Stage: StageUpload, Kind: KindStart})
 
-    uploadID, fileID := "u1", "f1"
+	uploadID, fileID := "u1", "f1"
 	dur := 100 * time.Millisecond
 	rep.OnEvent(
 		Event{
@@ -28,7 +28,7 @@ func TestJSONReporter_Encode(t *testing.T) {
 		},
 	)
 
-    rem := 4 * time.Minute
+	rem := 4 * time.Minute
 	reportID := 42
 	prog := &Progress{Completed: 1, Total: 2, Running: 1}
 	rep.OnEvent(
@@ -42,7 +42,7 @@ func TestJSONReporter_Encode(t *testing.T) {
 		},
 	)
 
-    rep.OnEvent(Event{At: at, Stage: StageDownloadResults, Kind: KindError, Err: errSentinel{}})
+	rep.OnEvent(Event{At: at, Stage: StageDownloadResults, Kind: KindError, Err: errSentinel{}})
 
 	out := buf.String()
 	lines := strings.Split(strings.TrimSpace(out), "\n")
@@ -50,7 +50,7 @@ func TestJSONReporter_Encode(t *testing.T) {
 		t.Fatalf("expected 4 JSON lines, got %d\n%s", len(lines), out)
 	}
 
-    want := []string{
+	want := []string{
 		`{"at":"1970-01-01T00:00:00Z","stage":"Upload","kind":"start"}`,
 		`{"at":"1970-01-01T00:00:00Z","stage":"Upload","kind":"complete","upload_id":"u1","file_id":"f1","duration_ms":100}`,
 		`{"at":"1970-01-01T00:00:00Z","stage":"Forecasting","kind":"update","report_id":42,"progress":{"completed":1,"total":2,"running":1},"token_remaining_s":240}`,
@@ -73,9 +73,9 @@ func TestStdoutReporter_Format(t *testing.T) {
 
 	at := time.Unix(0, 0).UTC()
 
-    rep.OnEvent(Event{At: at, Stage: StageUpload, Kind: KindStart})
+	rep.OnEvent(Event{At: at, Stage: StageUpload, Kind: KindStart})
 
-    uid, fid := "u1", "f1"
+	uid, fid := "u1", "f1"
 	dur := 50 * time.Millisecond
 	rep.OnEvent(
 		Event{
@@ -88,22 +88,22 @@ func TestStdoutReporter_Format(t *testing.T) {
 		},
 	)
 
-    rep.OnEvent(Event{At: at, Stage: StageCheckIn, Kind: KindStart})
+	rep.OnEvent(Event{At: at, Stage: StageCheckIn, Kind: KindStart})
 	vid := "v1"
 	rep.OnEvent(Event{At: at, Stage: StageCheckIn, Kind: KindComplete, VersionID: &vid})
 
-    rep.OnEvent(Event{At: at, Stage: StagePoll, Kind: KindStart})
+	rep.OnEvent(Event{At: at, Stage: StagePoll, Kind: KindStart})
 	prog := &Progress{Completed: 1, Total: 2, Running: 1}
 	rep.OnEvent(Event{At: at, Stage: StagePoll, Kind: KindUpdate, Progress: prog})
 	dPoll := 10 * time.Second
 	rep.OnEvent(Event{At: at, Stage: StagePoll, Kind: KindComplete, Duration: &dPoll})
 
-    rep.OnEvent(Event{At: at, Stage: StageDownloadResults, Kind: KindStart})
+	rep.OnEvent(Event{At: at, Stage: StageDownloadResults, Kind: KindStart})
 	dDl := 200 * time.Millisecond
 	rep.OnEvent(Event{At: at, Stage: StageDownloadResults, Kind: KindComplete, Duration: &dDl})
 
 	got := buf.String()
-    var exp strings.Builder
+	var exp strings.Builder
 	exp.WriteString("uploaded\n")
 	exp.WriteString("checked-in\n")
 	exp.WriteString("progress: 1/2 (50%) running=1\n")
@@ -124,7 +124,7 @@ func TestStdoutReporter_TokenWarning(t *testing.T) {
 	at := time.Unix(0, 0).UTC()
 	rem := 4 * time.Minute
 
-    rep.OnEvent(Event{At: at, Stage: StageUpload, Kind: KindStart, TokenRemaining: &rem})
+	rep.OnEvent(Event{At: at, Stage: StageUpload, Kind: KindStart, TokenRemaining: &rem})
 
 	got := buf.String()
 	want := "warning: token expires in 4m0s\n"
@@ -138,9 +138,9 @@ func TestStdoutReporter_ErrorBranches(t *testing.T) {
 	rep := NewStdoutReporter(&buf, false)
 	at := time.Unix(0, 0).UTC()
 
-    rep.OnEvent(Event{At: at, Stage: StageStartForecast, Kind: KindError, Err: errSentinel{}})
+	rep.OnEvent(Event{At: at, Stage: StageStartForecast, Kind: KindError, Err: errSentinel{}})
 
-    rep.OnEvent(Event{At: at, Stage: StageDownloadResults, Kind: KindError, Err: errSentinel{}})
+	rep.OnEvent(Event{At: at, Stage: StageDownloadResults, Kind: KindError, Err: errSentinel{}})
 
 	out := buf.String()
 	if !strings.Contains(out, "error: start forecast failed: sentinel\n") {
@@ -156,12 +156,12 @@ func TestJSONReporter_OptionalFields(t *testing.T) {
 	rep := NewJSONReporter(&buf)
 	at := time.Unix(0, 0).UTC()
 
-    rep.OnEvent(Event{At: at, Stage: StageUpload})
+	rep.OnEvent(Event{At: at, Stage: StageUpload})
 
-    d := 250 * time.Millisecond
+	d := 250 * time.Millisecond
 	rep.OnEvent(Event{At: at, Stage: StageDownloadResults, Kind: KindComplete, Duration: &d})
 
-    rep.OnEvent(Event{At: at, Stage: StageStartForecast, Kind: KindError, Err: errSentinel{}})
+	rep.OnEvent(Event{At: at, Stage: StageStartForecast, Kind: KindError, Err: errSentinel{}})
 
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	if len(lines) != 3 {

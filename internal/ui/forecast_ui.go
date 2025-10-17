@@ -50,10 +50,10 @@ type ForecastModel struct {
 	spinner  spinner.Model
 	progress progress.Model
 
-    done     bool
-    quitting bool
-    err      error
-    result   *workflow.RunResult
+	done     bool
+	quitting bool
+	err      error
+	result   *workflow.RunResult
 
 	job *workflow.Job
 }
@@ -89,17 +89,17 @@ func NewForecastModel(
 		workflow.StageDownloadResults: {Name: "Download results", Complete: false},
 	}
 
-    if params.Clean {
-        stages[workflow.StageDeleteUpload] = &StageStatus{Name: "Delete upload", Complete: false}
-        stages[workflow.StageDeleteReport] = &StageStatus{Name: "Delete report", Complete: false}
-    }
+	if params.Clean {
+		stages[workflow.StageDeleteUpload] = &StageStatus{Name: "Delete upload", Complete: false}
+		stages[workflow.StageDeleteReport] = &StageStatus{Name: "Delete report", Complete: false}
+	}
 
-    var cleanPolicy workflow.CleanPolicy
-    if params.Clean {
-        cleanPolicy = workflow.CleanOnSuccess
-    } else {
-        cleanPolicy = workflow.CleanNever
-    }
+	var cleanPolicy workflow.CleanPolicy
+	if params.Clean {
+		cleanPolicy = workflow.CleanOnSuccess
+	} else {
+		cleanPolicy = workflow.CleanNever
+	}
 
 	return &ForecastModel{
 		ctx: ctx,
@@ -135,7 +135,6 @@ type workflowCompleteMsg struct {
 type workflowErrorMsg struct {
 	err error
 }
-
 
 type jobStartedMsg struct{}
 
@@ -186,17 +185,17 @@ func (m *ForecastModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case jobStartedMsg:
 		return m, tea.Batch(m.subscribeNextEvent(), m.waitForCompletion())
 
-    case tea.KeyMsg:
-        switch msg.Type {
-        case tea.KeyCtrlC:
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyCtrlC:
 			if m.job != nil {
 				m.job.Cancel()
 			}
-            m.done = true
-            m.quitting = true
-            m.err = fmt.Errorf("cancelled by user")
-            return m, tea.Quit
-        }
+			m.done = true
+			m.quitting = true
+			m.err = fmt.Errorf("cancelled by user")
+			return m, tea.Quit
+		}
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -204,10 +203,9 @@ func (m *ForecastModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case workflow.Event:
-        e := msg
+		e := msg
 
-        
-        switch e.Kind {
+		switch e.Kind {
 		case workflow.KindStart:
 			m.currentStage = e.Stage
 			if stage, ok := m.stages[e.Stage]; ok && stage.StartTime.IsZero() {
@@ -225,8 +223,8 @@ func (m *ForecastModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				stage.Error = e.Err
 			}
 		case workflow.KindUpdate:
-        default:
-            
+		default:
+
 			if e.Duration == nil && e.Err == nil && e.Progress == nil {
 				m.currentStage = e.Stage
 				if stage, ok := m.stages[e.Stage]; ok && stage.StartTime.IsZero() {
@@ -256,23 +254,23 @@ func (m *ForecastModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, m.subscribeNextEvent()
 
-    case eventsClosedMsg:
-        if m.result != nil {
-            m.done = true
-            m.quitting = true
-            return m, tea.Quit
-        }
-        return m, nil
+	case eventsClosedMsg:
+		if m.result != nil {
+			m.done = true
+			m.quitting = true
+			return m, tea.Quit
+		}
+		return m, nil
 
 	case workflowCompleteMsg:
 		m.result = msg.result
 		return m, nil
 
-    case workflowErrorMsg:
-        m.done = true
-        m.quitting = true
-        m.err = msg.err
-        return m, tea.Quit
+	case workflowErrorMsg:
+		m.done = true
+		m.quitting = true
+		m.err = msg.err
+		return m, tea.Quit
 
 	case tea.QuitMsg:
 		if m.job != nil {
@@ -285,10 +283,10 @@ func (m *ForecastModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *ForecastModel) View() string {
-    var content string
+	var content string
 
-    grayStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-    whiteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	grayStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	whiteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	content += grayStyle.Render(
 		">_",
 	) + " " + whiteStyle.Render(
@@ -297,7 +295,7 @@ func (m *ForecastModel) View() string {
 		"("+version.GetVersion()+")",
 	) + "\n\n"
 
-    stagesToRender := []workflow.Stage{
+	stagesToRender := []workflow.Stage{
 		workflow.StageUpload,
 		workflow.StageCheckIn,
 	}
@@ -313,7 +311,7 @@ func (m *ForecastModel) View() string {
 		stagesToRender = append(stagesToRender, workflow.StageDeleteReport)
 	}
 
-    for _, stage := range stagesToRender {
+	for _, stage := range stagesToRender {
 		status := m.stages[stage]
 		if status == nil {
 			continue
@@ -322,9 +320,9 @@ func (m *ForecastModel) View() string {
 		var icon string
 		var text string
 
-        if status.Error != nil {
-            icon = ErrorStyle.Render("✗")
-            text = fmt.Sprintf("%s (failed)", status.Name)
+		if status.Error != nil {
+			icon = ErrorStyle.Render("✗")
+			text = fmt.Sprintf("%s (failed)", status.Name)
 		} else if status.Complete {
 			icon = SuccessStyle.Render("✓")
 			text = status.Name
@@ -346,8 +344,8 @@ func (m *ForecastModel) View() string {
 		content += fmt.Sprintf("  %s %s\n", icon, text)
 	}
 
-    if m.currentStage == workflow.StagePoll && m.total > 0 {
-        content += "\n"
+	if m.currentStage == workflow.StagePoll && m.total > 0 {
+		content += "\n"
 
 		percentComplete := float64(m.completed) / float64(m.total)
 		content += fmt.Sprintf("Progress: %d/%d (%s)\n",
@@ -356,26 +354,26 @@ func (m *ForecastModel) View() string {
 
 		content += m.progress.ViewAs(percentComplete) + "\n\n"
 
-        if stage, ok := m.stages[workflow.StagePoll]; ok && !stage.StartTime.IsZero() {
-            elapsed := time.Since(stage.StartTime)
-            var etaStr string
-            if percentComplete > 0 && percentComplete < 1 {
-                eta := time.Duration(float64(elapsed) / percentComplete * (1 - percentComplete))
-                etaStr = fmt.Sprintf(" | ETA: %v", eta.Round(time.Second))
-            }
+		if stage, ok := m.stages[workflow.StagePoll]; ok && !stage.StartTime.IsZero() {
+			elapsed := time.Since(stage.StartTime)
+			var etaStr string
+			if percentComplete > 0 && percentComplete < 1 {
+				eta := time.Duration(float64(elapsed) / percentComplete * (1 - percentComplete))
+				etaStr = fmt.Sprintf(" | ETA: %v", eta.Round(time.Second))
+			}
 
-            var tokenStr string
-            tokenRemaining := time.Until(m.tokenExpiresAt)
-            if tokenRemaining > 0 {
-                formattedTime := tokenRemaining.Round(time.Minute)
-                timeDisplay := strings.TrimSuffix(formattedTime.String(), "0s")
-                if tokenRemaining < 5*time.Minute {
-                    tokenStr = fmt.Sprintf(" | Token: %s",
-                        ErrorStyle.Render(timeDisplay))
-                } else {
-                    tokenStr = fmt.Sprintf(" | Token: %s", timeDisplay)
-                }
-            }
+			var tokenStr string
+			tokenRemaining := time.Until(m.tokenExpiresAt)
+			if tokenRemaining > 0 {
+				formattedTime := tokenRemaining.Round(time.Minute)
+				timeDisplay := strings.TrimSuffix(formattedTime.String(), "0s")
+				if tokenRemaining < 5*time.Minute {
+					tokenStr = fmt.Sprintf(" | Token: %s",
+						ErrorStyle.Render(timeDisplay))
+				} else {
+					tokenStr = fmt.Sprintf(" | Token: %s", timeDisplay)
+				}
+			}
 
 			content += statsStyle.Render(fmt.Sprintf(
 				"Running: %d%s%s",

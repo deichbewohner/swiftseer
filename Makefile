@@ -31,7 +31,7 @@ RACE ?= -race
 endif
 TEST_FLAGS ?= $(RACE) -count=1
 
-.PHONY: all build build-all test clean tidy run cover help ci fmt lint vet
+.PHONY: all build build-all test clean tidy run cover help ci fmt lint vet hooks
 
 all: build
 
@@ -92,6 +92,12 @@ help:
 	@echo "  lint        Run golangci-lint (requires it to be installed)"
 	@echo "  clean       Remove build artifacts and caches"
 	@echo "  ci          Run tests and build"
+	@echo "  hooks       Install Git hooks (fmt on commit)"
+
+hooks:
+	@git config core.hooksPath .githooks
+	@chmod +x .githooks/* 2>/dev/null || true
+	@echo "Git hooks installed (core.hooksPath=.githooks)"
 
 GOLANGCI_LINT ?= golangci-lint
 GOLANGCI_LINT_FLAGS ?=

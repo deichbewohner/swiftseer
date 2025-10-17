@@ -12,24 +12,24 @@ import (
 )
 
 func LoginCmd(args []string) error {
-    username, group, environment, err := parseLoginFlags(args)
+	username, group, environment, err := parseLoginFlags(args)
 	if err != nil {
 		return err
 	}
 
-    cfgManager, err := config.NewManager()
+	cfgManager, err := config.NewManager()
 	if err != nil {
 		return fmt.Errorf("failed to create config manager: %w", err)
 	}
 
-    cfg, err := cfgManager.Load()
+	cfg, err := cfgManager.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-    if username != "" {
-        cfg.Username = username
-    }
+	if username != "" {
+		cfg.Username = username
+	}
 	if group != "" {
 		cfg.Group = group
 	}
@@ -37,41 +37,41 @@ func LoginCmd(args []string) error {
 		cfg.Environment = environment
 	}
 
-    if cfg.Username == "" {
-        return fmt.Errorf("username is required (use --user flag or save in config)")
-    }
+	if cfg.Username == "" {
+		return fmt.Errorf("username is required (use --user flag or save in config)")
+	}
 	if cfg.Group == "" {
 		return fmt.Errorf("group is required (use --group flag or save in config)")
 	}
 
-    if cfg.Environment == "" {
-        cfg.Environment = "production"
-    }
+	if cfg.Environment == "" {
+		cfg.Environment = "production"
+	}
 
-    env, err := config.GetEnvironment(cfg.Environment)
+	env, err := config.GetEnvironment(cfg.Environment)
 	if err != nil {
 		return err
 	}
 
-    authClient := client.NewAuthClient(env.GetAuthTokenURL(), nil)
+	authClient := client.NewAuthClient(env.GetAuthTokenURL(), nil)
 
-    if pwd := os.Getenv("FUTURE_PASSWORD"); pwd != "" {
+	if pwd := os.Getenv("FUTURE_PASSWORD"); pwd != "" {
 		otp := os.Getenv("FUTURE_OTP")
 		tokenResp, err := authClient.Authenticate(cfg.Username, pwd, otp)
 		if err != nil {
 			return fmt.Errorf("authentication failed: %w", err)
 		}
-        cfg.UpdateToken(
-            tokenResp.AccessToken,
-            tokenResp.RefreshToken,
-            tokenResp.ExpiresIn,
-            tokenResp.RefreshExpiresIn,
-        )
-        if err := cfgManager.Save(cfg); err != nil {
-            return fmt.Errorf("failed to save config: %w", err)
-        }
-        fmt.Println()
-        fmt.Printf("%s Authentication successful!\n", ui.SuccessStyle.Render("✓"))
+		cfg.UpdateToken(
+			tokenResp.AccessToken,
+			tokenResp.RefreshToken,
+			tokenResp.ExpiresIn,
+			tokenResp.RefreshExpiresIn,
+		)
+		if err := cfgManager.Save(cfg); err != nil {
+			return fmt.Errorf("failed to save config: %w", err)
+		}
+		fmt.Println()
+		fmt.Printf("%s Authentication successful!\n", ui.SuccessStyle.Render("✓"))
 		fmt.Printf("  User: %s\n", cfg.Username)
 		fmt.Printf("  Group: %s\n", cfg.Group)
 		fmt.Printf("  Environment: %s\n", cfg.Environment)
@@ -87,14 +87,14 @@ func LoginCmd(args []string) error {
 		return nil
 	}
 
-    fmt.Printf("\n%s\n", ui.TitleStyle.Render("futureEXPERT Login"))
+	fmt.Printf("\n%s\n", ui.TitleStyle.Render("futureEXPERT Login"))
 	fmt.Printf("  Username: %s\n", ui.HighlightStyle.Render(cfg.Username))
 	fmt.Printf("  Group: %s\n", ui.HighlightStyle.Render(cfg.Group))
 	fmt.Printf("  Environment: %s\n\n", ui.HighlightStyle.Render(cfg.Environment))
 
 	loginModel := ui.NewLoginModel(authClient, cfg.Username)
 	p := tea.NewProgram(loginModel)
-    finalModel, err := p.Run()
+	finalModel, err := p.Run()
 	if err != nil {
 		return fmt.Errorf("login UI error: %w", err)
 	}
@@ -104,19 +104,19 @@ func LoginCmd(args []string) error {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 
-    cfg.UpdateToken(
-        tokenResp.AccessToken,
-        tokenResp.RefreshToken,
-        tokenResp.ExpiresIn,
-        tokenResp.RefreshExpiresIn,
-    )
+	cfg.UpdateToken(
+		tokenResp.AccessToken,
+		tokenResp.RefreshToken,
+		tokenResp.ExpiresIn,
+		tokenResp.RefreshExpiresIn,
+	)
 
-    if err := cfgManager.Save(cfg); err != nil {
-        return fmt.Errorf("failed to save config: %w", err)
-    }
+	if err := cfgManager.Save(cfg); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
 
-    fmt.Println()
-    fmt.Printf("%s Authentication successful!\n", ui.SuccessStyle.Render("✓"))
+	fmt.Println()
+	fmt.Printf("%s Authentication successful!\n", ui.SuccessStyle.Render("✓"))
 	fmt.Printf("  User: %s\n", cfg.Username)
 	fmt.Printf("  Group: %s\n", cfg.Group)
 	fmt.Printf("  Environment: %s\n", cfg.Environment)

@@ -52,58 +52,58 @@ func (c *Client) EnsureValidToken(ctx context.Context) error {
 		return nil
 	}
 
-    c.mu.Lock()
-    defer c.mu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-    if !c.config.NeedsTokenRefresh() {
-        return nil
-    }
+	if !c.config.NeedsTokenRefresh() {
+		return nil
+	}
 
-    if !c.config.IsRefreshTokenValid() {
-        return fmt.Errorf("refresh token expired, please login again")
-    }
+	if !c.config.IsRefreshTokenValid() {
+		return fmt.Errorf("refresh token expired, please login again")
+	}
 
-    tokenResp, err := c.authClient.RefreshToken(c.config.RefreshToken)
+	tokenResp, err := c.authClient.RefreshToken(c.config.RefreshToken)
 	if err != nil {
 		return fmt.Errorf("failed to refresh token: %w", err)
 	}
 
-    c.config.UpdateToken(
+	c.config.UpdateToken(
 		tokenResp.AccessToken,
 		tokenResp.RefreshToken,
 		tokenResp.ExpiresIn,
 		tokenResp.RefreshExpiresIn,
 	)
 
-    if err := c.configManager.Save(c.config); err != nil {
-        return fmt.Errorf("failed to save refreshed token: %w", err)
-    }
+	if err := c.configManager.Save(c.config); err != nil {
+		return fmt.Errorf("failed to save refreshed token: %w", err)
+	}
 
 	return nil
 }
 
 func (c *Client) doRequest(ctx context.Context, req *http.Request, result interface{}) error {
-    if err := c.EnsureValidToken(ctx); err != nil {
-        return err
-    }
-    c.mu.RLock()
-    token := c.config.AccessToken
-    c.mu.RUnlock()
+	if err := c.EnsureValidToken(ctx); err != nil {
+		return err
+	}
+	c.mu.RLock()
+	token := c.config.AccessToken
+	c.mu.RUnlock()
 
-    req.Header.Set("Authorization", "Bearer "+token)
-    req = req.WithContext(ctx)
-    resp, err := c.httpClient.Do(req)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req = req.WithContext(ctx)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-    body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read response: %w", err)
 	}
 
-    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &APIError{
 			StatusCode: resp.StatusCode,
 			Message:    string(body),
@@ -112,37 +112,37 @@ func (c *Client) doRequest(ctx context.Context, req *http.Request, result interf
 		}
 	}
 
-    if result != nil {
-        if err := json.Unmarshal(body, result); err != nil {
-            return fmt.Errorf("failed to parse response: %w", err)
-        }
-    }
+	if result != nil {
+		if err := json.Unmarshal(body, result); err != nil {
+			return fmt.Errorf("failed to parse response: %w", err)
+		}
+	}
 
 	return nil
 }
 
 func (c *Client) doRequestRaw(ctx context.Context, req *http.Request) ([]byte, error) {
-    if err := c.EnsureValidToken(ctx); err != nil {
-        return nil, err
-    }
-    c.mu.RLock()
-    token := c.config.AccessToken
-    c.mu.RUnlock()
+	if err := c.EnsureValidToken(ctx); err != nil {
+		return nil, err
+	}
+	c.mu.RLock()
+	token := c.config.AccessToken
+	c.mu.RUnlock()
 
-    req.Header.Set("Authorization", "Bearer "+token)
-    req = req.WithContext(ctx)
-    resp, err := c.httpClient.Do(req)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req = req.WithContext(ctx)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-    body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, &APIError{
 			StatusCode: resp.StatusCode,
 			Message:    string(body),

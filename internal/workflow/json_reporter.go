@@ -7,7 +7,7 @@ import (
 )
 
 type JSONReporter struct {
-    enc *json.Encoder
+	enc *json.Encoder
 }
 
 func NewJSONReporter(w io.Writer) *JSONReporter {
@@ -41,9 +41,9 @@ func (r *JSONReporter) OnEvent(e Event) {
 		Stage: e.Stage.String(),
 	}
 
-    if s := e.Kind.String(); s != "" {
-        j.Kind = s
-    }
+	if s := e.Kind.String(); s != "" {
+		j.Kind = s
+	}
 
 	j.UploadID = e.UploadID
 	j.FileID = e.FileID
@@ -57,13 +57,13 @@ func (r *JSONReporter) OnEvent(e Event) {
 			Running:   e.Progress.Running,
 		}
 	}
-    if e.TokenRemaining != nil {
-        secs := int64(e.TokenRemaining.Round(time.Second).Seconds())
-        if secs < 0 {
-            secs = 0
-        }
-        j.TokenRemainingS = &secs
-    }
+	if e.TokenRemaining != nil {
+		secs := int64(e.TokenRemaining.Round(time.Second).Seconds())
+		if secs < 0 {
+			secs = 0
+		}
+		j.TokenRemainingS = &secs
+	}
 	if e.Duration != nil {
 		ms := e.Duration.Milliseconds()
 		j.DurationMs = &ms
@@ -73,5 +73,5 @@ func (r *JSONReporter) OnEvent(e Event) {
 		j.Error = &s
 	}
 
-    _ = r.enc.Encode(j)
+	_ = r.enc.Encode(j)
 }

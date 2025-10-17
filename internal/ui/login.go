@@ -14,26 +14,26 @@ type LoginModel struct {
 	authClient *client.AuthClient
 	username   string
 
-    passwordInput textinput.Model
-    otpInput      textinput.Model
+	passwordInput textinput.Model
+	otpInput      textinput.Model
 
-    step   int // 0 = password, 1 = OTP (if needed)
-    err    error
-    done   bool
-    result *models.TokenResponse
+	step   int // 0 = password, 1 = OTP (if needed)
+	err    error
+	done   bool
+	result *models.TokenResponse
 }
 
 func NewLoginModel(authClient *client.AuthClient, username string) LoginModel {
-    passwordInput := textinput.New()
-    passwordInput.Placeholder = "Enter your password"
-    passwordInput.EchoMode = textinput.EchoPassword
-    passwordInput.EchoCharacter = '•'
-    passwordInput.Width = 40
-    passwordInput.Focus()
-    otpInput := textinput.New()
-    otpInput.Placeholder = "Enter OTP (or press Enter to skip)"
-    otpInput.CharLimit = 6
-    otpInput.Width = 40
+	passwordInput := textinput.New()
+	passwordInput.Placeholder = "Enter your password"
+	passwordInput.EchoMode = textinput.EchoPassword
+	passwordInput.EchoCharacter = '•'
+	passwordInput.Width = 40
+	passwordInput.Focus()
+	otpInput := textinput.New()
+	otpInput.Placeholder = "Enter OTP (or press Enter to skip)"
+	otpInput.CharLimit = 6
+	otpInput.Width = 40
 
 	return LoginModel{
 		authClient:    authClient,

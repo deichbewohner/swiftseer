@@ -5,10 +5,10 @@ import (
 )
 
 type Job struct {
-    events  <-chan Event
-    resultC chan *RunResult
-    errC    chan error
-    cancel  context.CancelFunc
+	events  <-chan Event
+	resultC chan *RunResult
+	errC    chan error
+	cancel  context.CancelFunc
 }
 
 func (j *Job) Events() <-chan Event { return j.events }
@@ -29,19 +29,19 @@ func (j *Job) Cancel() {
 }
 
 func (r *Runner) RunAsync(ctx context.Context, params RunParams) *Job {
-    events := make(chan Event, 256)
-    resC := make(chan *RunResult, 1)
-    errC := make(chan error, 1)
-    runCtx, cancel := context.WithCancel(ctx)
-    rr := &Runner{
-        api:            r.api,
-        reporter:       NewChannelReporter(events),
-        pollInterval:   r.pollInterval,
-        clean:          r.clean,
-        tokenExp:       r.tokenExp,
-        clock:          r.clock,
-        checkInBuilder: r.checkInBuilder,
-    }
+	events := make(chan Event, 256)
+	resC := make(chan *RunResult, 1)
+	errC := make(chan error, 1)
+	runCtx, cancel := context.WithCancel(ctx)
+	rr := &Runner{
+		api:            r.api,
+		reporter:       NewChannelReporter(events),
+		pollInterval:   r.pollInterval,
+		clean:          r.clean,
+		tokenExp:       r.tokenExp,
+		clock:          r.clock,
+		checkInBuilder: r.checkInBuilder,
+	}
 
 	go func() {
 		defer close(events)

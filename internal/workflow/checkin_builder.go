@@ -6,7 +6,7 @@ import (
 )
 
 type CheckInRequestBuilder interface {
-    Build(fileUUID, csvPath string) (*models.CheckInRequest, error)
+	Build(fileUUID, csvPath string) (*models.CheckInRequest, error)
 }
 
 type defaultCheckInRequestBuilder struct{}

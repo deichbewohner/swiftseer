@@ -13,27 +13,27 @@ import (
 )
 
 func BuildCheckInRequest(fileUUID, csvPath string) (*models.CheckInRequest, error) {
-    file, err := os.Open(csvPath)
+	file, err := os.Open(csvPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open CSV: %w", err)
 	}
 	defer func() { _ = file.Close() }()
 
-    delimiter, err := detectDelimiter(csvPath)
+	delimiter, err := detectDelimiter(csvPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to detect delimiter: %w", err)
 	}
 
-    reader := csv.NewReader(file)
+	reader := csv.NewReader(file)
 	reader.Comma = rune(delimiter[0])
 	reader.TrimLeadingSpace = true
 
-    header, err := reader.Read()
+	header, err := reader.Read()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read CSV header: %w", err)
 	}
 
-    var sampleRows [][]string
+	var sampleRows [][]string
 	for i := 0; i < 10; i++ {
 		row, err := reader.Read()
 		if err != nil {
@@ -46,7 +46,7 @@ func BuildCheckInRequest(fileUUID, csvPath string) (*models.CheckInRequest, erro
 		return nil, fmt.Errorf("CSV file is empty (no data rows)")
 	}
 
-    dateColIdx, dateFormat, err := detectDateColumn(header, sampleRows)
+	dateColIdx, dateFormat, err := detectDateColumn(header, sampleRows)
 	if err != nil {
 		return nil, fmt.Errorf("failed to detect date column: %w", err)
 	}
@@ -58,7 +58,7 @@ func BuildCheckInRequest(fileUUID, csvPath string) (*models.CheckInRequest, erro
 
 	groupColIndices := detectGroupColumns(header, sampleRows, dateColIdx, valueColIndices)
 
-    dataDef := models.DataDefinition{
+	dataDef := models.DataDefinition{
 		DateColumns: models.DateColumn{
 			Name:   header[dateColIdx],
 			Format: dateFormat,
@@ -81,12 +81,12 @@ func BuildCheckInRequest(fileUUID, csvPath string) (*models.CheckInRequest, erro
 		})
 	}
 
-    valueColNames := make([]string, len(valueColIndices))
+	valueColNames := make([]string, len(valueColIndices))
 	for i, idx := range valueColIndices {
 		valueColNames[i] = header[idx]
 	}
 
-    groupColNames := make([]string, len(groupColIndices))
+	groupColNames := make([]string, len(groupColIndices))
 	for i, idx := range groupColIndices {
 		groupColNames[i] = header[idx]
 	}
@@ -98,7 +98,7 @@ func BuildCheckInRequest(fileUUID, csvPath string) (*models.CheckInRequest, erro
 		MissingValueHandler: "keepNaN",
 	}
 
-    fileSpec := models.FileSpecification{
+	fileSpec := models.FileSpecification{
 		Delimiter: delimiter,
 		Decimal:   ".",
 		Encoding:  "utf-8",
@@ -126,40 +126,40 @@ func detectDelimiter(csvPath string) (string, error) {
 
 	firstLine := scanner.Text()
 
-    commaCount := strings.Count(firstLine, ",")
-    semicolonCount := strings.Count(firstLine, ";")
-    tabCount := strings.Count(firstLine, "\t")
+	commaCount := strings.Count(firstLine, ",")
+	semicolonCount := strings.Count(firstLine, ";")
+	tabCount := strings.Count(firstLine, "\t")
 
-    if commaCount >= semicolonCount && commaCount >= tabCount {
-        return ",", nil
-    }
-    if semicolonCount >= tabCount {
-        return ";", nil
-    }
-    return "\t", nil
+	if commaCount >= semicolonCount && commaCount >= tabCount {
+		return ",", nil
+	}
+	if semicolonCount >= tabCount {
+		return ";", nil
+	}
+	return "\t", nil
 }
 
 func detectDateColumn(header []string, sampleRows [][]string) (int, string, error) {
-    dateKeywords := []string{"date", "time", "timestamp", "datetime", "datum"}
+	dateKeywords := []string{"date", "time", "timestamp", "datetime", "datum"}
 
-    for i, col := range header {
-        colLower := strings.ToLower(col)
-        for _, keyword := range dateKeywords {
-            if strings.Contains(colLower, keyword) {
-                format, err := detectDateFormat(sampleRows, i)
-                if err == nil {
-                    return i, format, nil
-                }
-            }
-        }
-    }
+	for i, col := range header {
+		colLower := strings.ToLower(col)
+		for _, keyword := range dateKeywords {
+			if strings.Contains(colLower, keyword) {
+				format, err := detectDateFormat(sampleRows, i)
+				if err == nil {
+					return i, format, nil
+				}
+			}
+		}
+	}
 
-    for i := range header {
-        format, err := detectDateFormat(sampleRows, i)
-        if err == nil {
-            return i, format, nil
-        }
-    }
+	for i := range header {
+		format, err := detectDateFormat(sampleRows, i)
+		if err == nil {
+			return i, format, nil
+		}
+	}
 
 	return 0, "", fmt.Errorf("no date column found in CSV")
 }
@@ -169,18 +169,18 @@ func detectDateFormat(sampleRows [][]string, colIdx int) (string, error) {
 		return "", fmt.Errorf("invalid column index")
 	}
 
-    formats := []struct {
-        goFormat     string
-        pythonFormat string
-    }{
-        {"2006-01-02", "%Y-%m-%d"},
-        {"2006/01/02", "%Y/%m/%d"},
-        {"02.01.2006", "%d.%m.%Y"},
-        {"01/02/2006", "%m/%d/%Y"},
-        {"2006-01-02 15:04:05", "%Y-%m-%d %H:%M:%S"},
-    }
+	formats := []struct {
+		goFormat     string
+		pythonFormat string
+	}{
+		{"2006-01-02", "%Y-%m-%d"},
+		{"2006/01/02", "%Y/%m/%d"},
+		{"02.01.2006", "%d.%m.%Y"},
+		{"01/02/2006", "%m/%d/%Y"},
+		{"2006-01-02 15:04:05", "%Y-%m-%d %H:%M:%S"},
+	}
 
-    sampleValue := strings.TrimSpace(sampleRows[0][colIdx])
+	sampleValue := strings.TrimSpace(sampleRows[0][colIdx])
 
 	for _, fmt := range formats {
 		if _, err := time.Parse(fmt.goFormat, sampleValue); err == nil {
@@ -199,7 +199,7 @@ func detectValueColumns(header []string, sampleRows [][]string, dateColIdx int) 
 			continue
 		}
 
-        isNumeric := true
+		isNumeric := true
 		for _, row := range sampleRows {
 			if i >= len(row) {
 				isNumeric = false
@@ -207,7 +207,7 @@ func detectValueColumns(header []string, sampleRows [][]string, dateColIdx int) 
 			}
 			value := strings.TrimSpace(row[i])
 			if value == "" {
-                continue
+				continue
 			}
 			if _, err := strconv.ParseFloat(value, 64); err != nil {
 				isNumeric = false

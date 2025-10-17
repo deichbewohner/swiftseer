@@ -14,34 +14,34 @@ type DataDefinition struct {
 }
 
 type DateColumn struct {
-    Name   string `json:"name"`
-    Format string `json:"format"`
+	Name   string `json:"name"`
+	Format string `json:"format"`
 }
 
 type ValueColumn struct {
-    Name     string   `json:"name"`
-    Min      *float64 `json:"min,omitempty"`
-    Max      *float64 `json:"max,omitempty"`
-    DtypeStr string   `json:"dtype_str"`
+	Name     string   `json:"name"`
+	Min      *float64 `json:"min,omitempty"`
+	Max      *float64 `json:"max,omitempty"`
+	DtypeStr string   `json:"dtype_str"`
 }
 
 type GroupColumn struct {
-    Name     string `json:"name"`
-    DtypeStr string `json:"dtype_str"`
+	Name     string `json:"name"`
+	DtypeStr string `json:"dtype_str"`
 }
 
 type TsCreationConfig struct {
-    TimeGranularity     string   `json:"time_granularity"`
-    ValueColumnsToSave  []string `json:"value_columns_to_save"`
-    GroupingLevel       []string `json:"grouping_level"`
-    MissingValueHandler string   `json:"missing_value_handler"`
-    Description         string   `json:"description,omitempty"`
+	TimeGranularity     string   `json:"time_granularity"`
+	ValueColumnsToSave  []string `json:"value_columns_to_save"`
+	GroupingLevel       []string `json:"grouping_level"`
+	MissingValueHandler string   `json:"missing_value_handler"`
+	Description         string   `json:"description,omitempty"`
 }
 
 type FileSpecification struct {
-    Delimiter string `json:"delimiter"`
-    Decimal   string `json:"decimal"`
-    Encoding  string `json:"encoding"`
+	Delimiter string `json:"delimiter"`
+	Decimal   string `json:"decimal"`
+	Encoding  string `json:"encoding"`
 }
 
 type CheckInResponse struct {

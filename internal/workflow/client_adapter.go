@@ -8,11 +8,11 @@ import (
 )
 
 type ClientAdapter struct {
-    client *client.Client
+	client *client.Client
 }
 
 func NewClientAdapter(c *client.Client) *ClientAdapter {
-    return &ClientAdapter{client: c}
+	return &ClientAdapter{client: c}
 }
 
 func (a *ClientAdapter) UploadCSV(ctx context.Context, path string) (*UploadResult, error) {

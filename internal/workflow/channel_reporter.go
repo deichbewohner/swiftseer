@@ -1,7 +1,7 @@
 package workflow
 
 type ChannelReporter struct {
-    ch chan<- Event
+	ch chan<- Event
 }
 
 func NewChannelReporter(ch chan<- Event) *ChannelReporter {

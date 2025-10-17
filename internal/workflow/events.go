@@ -62,28 +62,29 @@ func (k EventKind) String() string {
 }
 
 type Progress struct {
-    Completed int
-    Total     int
-    Running   int
+	Completed int
+	Total     int
+	Running   int
 }
 
 type Event struct {
-    At time.Time
-    Stage Stage
-    Kind EventKind
-    UploadID *string
-    FileID *string
-    VersionID *string
-    ReportID *int
-    Progress *Progress
-    TokenRemaining *time.Duration
-    Duration *time.Duration
-    Err error
+	At             time.Time
+	Stage          Stage
+	Kind           EventKind
+	UploadID       *string
+	FileID         *string
+	VersionID      *string
+	ReportID       *int
+	Progress       *Progress
+	TokenRemaining *time.Duration
+	Duration       *time.Duration
+	Err            error
 }
 
 type Reporter interface {
-    OnEvent(Event)
+	OnEvent(Event)
 }
 
 type NoopReporter struct{}
+
 func (NoopReporter) OnEvent(Event) {}

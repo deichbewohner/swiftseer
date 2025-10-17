@@ -13,13 +13,13 @@ func (c *Client) StartForecast(
 	versionID string,
 	req *models.ForecastRequest,
 ) (int, error) {
-    forecastPayload := buildForecastPayload(versionID, req)
+	forecastPayload := buildForecastPayload(versionID, req)
 
-    actionPayload := &ActionPayload{
-        Payload: forecastPayload,
-    }
+	actionPayload := &ActionPayload{
+		Payload: forecastPayload,
+	}
 
-    result, err := c.ExecuteAction(
+	result, err := c.ExecuteAction(
 		ctx,
 		"forecast-batch",
 		actionPayload,
@@ -30,7 +30,7 @@ func (c *Client) StartForecast(
 		return 0, fmt.Errorf("forecast action failed: %w", err)
 	}
 
-    reportIDFloat, ok := result["report_id"].(float64)
+	reportIDFloat, ok := result["report_id"].(float64)
 	if !ok {
 		return 0, fmt.Errorf("no report_id in result")
 	}
@@ -54,7 +54,7 @@ func buildForecastPayload(versionID string, req *models.ForecastRequest) map[str
 		"actuals_filter": make(map[string]interface{}),
 	}
 
-    forecastingMap := payload["forecasting"].(map[string]interface{})
+	forecastingMap := payload["forecasting"].(map[string]interface{})
 	if req.Config.Forecasting.LowerBound != nil {
 		forecastingMap["lower_bound"] = *req.Config.Forecasting.LowerBound
 	}
@@ -62,7 +62,7 @@ func buildForecastPayload(versionID string, req *models.ForecastRequest) map[str
 		forecastingMap["upper_bound"] = *req.Config.Forecasting.UpperBound
 	}
 
-    if req.Config.Preprocessing.UseSeasonDetection {
+	if req.Config.Preprocessing.UseSeasonDetection {
 		payload["preprocessing"].(map[string]interface{})["use_season_detection"] = true
 	}
 	if req.Config.Preprocessing.DetectOutliers {
@@ -75,7 +75,7 @@ func buildForecastPayload(versionID string, req *models.ForecastRequest) map[str
 		payload["preprocessing"].(map[string]interface{})["detect_changepoints"] = true
 	}
 
-    if req.Config.MethodSelection.NumberIterations > 0 {
+	if req.Config.MethodSelection.NumberIterations > 0 {
 		payload["backtesting"].(map[string]interface{})["number_iterations"] = req.Config.MethodSelection.NumberIterations
 	}
 	if req.Config.MethodSelection.DefaultErrorMetric != "" {

@@ -13,17 +13,17 @@ func (c *Client) CheckIn(
 	userInputID, fileID string,
 	req *models.CheckInRequest,
 ) (string, error) {
-    checkInConfig := buildCheckInConfig(req)
+	checkInConfig := buildCheckInConfig(req)
 
-    checkInConfig["stage"] = "createDataset"
-    checkInConfig["fileUuid"] = fileID
+	checkInConfig["stage"] = "createDataset"
+	checkInConfig["fileUuid"] = fileID
 
-    actionPayload := &ActionPayload{
-        UserInputID: userInputID,
-        Payload:     checkInConfig,
-    }
+	actionPayload := &ActionPayload{
+		UserInputID: userInputID,
+		Payload:     checkInConfig,
+	}
 
-    result, err := c.ExecuteAction(
+	result, err := c.ExecuteAction(
 		ctx,
 		"checkin-preprocessing",
 		actionPayload,
@@ -34,7 +34,7 @@ func (c *Client) CheckIn(
 		return "", fmt.Errorf("check-in action failed: %w", err)
 	}
 
-    resultMap, ok := result["result"].(map[string]interface{})
+	resultMap, ok := result["result"].(map[string]interface{})
 	if !ok {
 		return "", fmt.Errorf("invalid result structure")
 	}
@@ -48,7 +48,7 @@ func (c *Client) CheckIn(
 }
 
 func buildCheckInConfig(req *models.CheckInRequest) map[string]interface{} {
-    valueColumns := make([]map[string]interface{}, len(req.DataDefinition.ValueColumns))
+	valueColumns := make([]map[string]interface{}, len(req.DataDefinition.ValueColumns))
 	for i, col := range req.DataDefinition.ValueColumns {
 		vc := map[string]interface{}{
 			"name":     col.Name,
@@ -82,7 +82,7 @@ func buildCheckInConfig(req *models.CheckInRequest) map[string]interface{} {
 		"groupColumns": groupColumns,
 	}
 
-    rawDataReviewResults := make(map[string]interface{})
+	rawDataReviewResults := make(map[string]interface{})
 	rawDataReviewResults[req.DataDefinition.DateColumns.Name] = map[string]interface{}{}
 	for _, col := range req.DataDefinition.ValueColumns {
 		rawDataReviewResults[col.Name] = map[string]interface{}{}
@@ -91,7 +91,7 @@ func buildCheckInConfig(req *models.CheckInRequest) map[string]interface{} {
 		rawDataReviewResults[col.Name] = map[string]interface{}{}
 	}
 
-    timeSeriesDatasetParameter := map[string]interface{}{
+	timeSeriesDatasetParameter := map[string]interface{}{
 		"aggregation": map[string]interface{}{
 			"operator": "sum",
 			"option":   req.ConfigTsCreation.MissingValueHandler,
@@ -110,7 +110,7 @@ func buildCheckInConfig(req *models.CheckInRequest) map[string]interface{} {
 		"valueColumnsToSave": req.ConfigTsCreation.ValueColumnsToSave,
 	}
 
-    return map[string]interface{}{
+	return map[string]interface{}{
 		"performedTasks": map[string]interface{}{
 			"removedCols": []interface{}{},
 			"removedRows": []interface{}{},

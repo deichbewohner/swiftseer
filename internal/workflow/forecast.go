@@ -11,9 +11,9 @@ import (
 type CleanPolicy int
 
 const (
-    CleanNever CleanPolicy = iota
-    CleanOnSuccess
-    CleanAlways
+	CleanNever CleanPolicy = iota
+	CleanOnSuccess
+	CleanAlways
 )
 
 type Runner struct {
@@ -27,13 +27,13 @@ type Runner struct {
 }
 
 const (
-    DefaultPollInterval = 10 * time.Second
-    UploadTimeout      = 60 * time.Second
-    CheckInTimeout     = 10 * time.Minute
-    StartTimeout       = 30 * time.Second
-    PollRequestTimeout = 30 * time.Second
-    DownloadTimeout    = 5 * time.Minute
-    DeleteTimeout      = 30 * time.Second
+	DefaultPollInterval = 10 * time.Second
+	UploadTimeout       = 60 * time.Second
+	CheckInTimeout      = 10 * time.Minute
+	StartTimeout        = 30 * time.Second
+	PollRequestTimeout  = 30 * time.Second
+	DownloadTimeout     = 5 * time.Minute
+	DeleteTimeout       = 30 * time.Second
 )
 
 type RunParams struct {
@@ -123,7 +123,7 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 	var reportID int
 	var err error
 
-    {
+	{
 		stageStart := r.clock.Now()
 		r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageUpload, Kind: KindStart})
 
@@ -152,7 +152,7 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 		})
 	}
 
-    {
+	{
 		stageStart := r.clock.Now()
 		r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageCheckIn, Kind: KindStart})
 
@@ -188,7 +188,7 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 		})
 	}
 
-    if r.clean == CleanOnSuccess || r.clean == CleanAlways {
+	if r.clean == CleanOnSuccess || r.clean == CleanAlways {
 		stageStart := r.clock.Now()
 		r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageDeleteUpload, Kind: KindStart})
 
@@ -196,7 +196,7 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 		defer cancel()
 
 		if err := r.api.DeleteUpload(deleteCtx, userInputID); err != nil {
-            // best-effort: report but don't fail
+			// best-effort: report but don't fail
 			r.reporter.OnEvent(
 				Event{At: r.clock.Now(), Stage: StageDeleteUpload, Kind: KindError, Err: err},
 			)
@@ -211,7 +211,7 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 		}
 	}
 
-    {
+	{
 		stageStart := r.clock.Now()
 		r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageStartForecast, Kind: KindStart})
 
@@ -247,8 +247,8 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 		})
 	}
 
-    var status *models.StatusResponse
-    {
+	var status *models.StatusResponse
+	{
 		stageStart := r.clock.Now()
 		r.reporter.OnEvent(
 			Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindStart, ReportID: &reportID},
@@ -260,7 +260,7 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 		firstPoll := true
 
 		for {
-            if !firstPoll {
+			if !firstPoll {
 				select {
 				case <-ctx.Done():
 					r.reporter.OnEvent(
@@ -272,7 +272,7 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 			}
 			firstPoll = false
 
-            select {
+			select {
 			case <-ctx.Done():
 				r.reporter.OnEvent(
 					Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindError, Err: ctx.Err()},
@@ -281,19 +281,19 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 			default:
 			}
 
-            pollCtx, cancel := context.WithTimeout(ctx, PollRequestTimeout)
+			pollCtx, cancel := context.WithTimeout(ctx, PollRequestTimeout)
 			currentStatus, err := r.api.GetStatus(pollCtx, reportID)
 			cancel()
 
 			if err != nil {
-                // transient polling error: report and retry
+				// transient polling error: report and retry
 				r.reporter.OnEvent(
 					Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindError, Err: err},
 				)
 				continue
 			}
 
-            progress := Progress{
+			progress := Progress{
 				Completed: currentStatus.StatusSummary.Computed,
 				Total:     currentStatus.StatusSummary.Created,
 				Running:   currentStatus.StatusSummary.Running,
@@ -397,8 +397,8 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 func (r *Runner) Resume(ctx context.Context, reportID int) (*RunResult, error) {
 	start := r.clock.Now()
 
-    var status *models.StatusResponse
-    {
+	var status *models.StatusResponse
+	{
 		stageStart := r.clock.Now()
 		r.reporter.OnEvent(
 			Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindStart, ReportID: &reportID},
@@ -410,7 +410,7 @@ func (r *Runner) Resume(ctx context.Context, reportID int) (*RunResult, error) {
 		firstPoll := true
 
 		for {
-            if !firstPoll {
+			if !firstPoll {
 				select {
 				case <-ctx.Done():
 					r.reporter.OnEvent(
@@ -422,7 +422,7 @@ func (r *Runner) Resume(ctx context.Context, reportID int) (*RunResult, error) {
 			}
 			firstPoll = false
 
-            select {
+			select {
 			case <-ctx.Done():
 				r.reporter.OnEvent(
 					Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindError, Err: ctx.Err()},
@@ -431,19 +431,19 @@ func (r *Runner) Resume(ctx context.Context, reportID int) (*RunResult, error) {
 			default:
 			}
 
-            pollCtx, cancel := context.WithTimeout(ctx, PollRequestTimeout)
+			pollCtx, cancel := context.WithTimeout(ctx, PollRequestTimeout)
 			currentStatus, err := r.api.GetStatus(pollCtx, reportID)
 			cancel()
 
 			if err != nil {
-                // transient polling error: report and retry
+				// transient polling error: report and retry
 				r.reporter.OnEvent(
 					Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindError, Err: err},
 				)
 				continue
 			}
 
-            progress := Progress{
+			progress := Progress{
 				Completed: currentStatus.StatusSummary.Computed,
 				Total:     currentStatus.StatusSummary.Created,
 				Running:   currentStatus.StatusSummary.Running,
@@ -482,8 +482,8 @@ func (r *Runner) Resume(ctx context.Context, reportID int) (*RunResult, error) {
 		}
 	}
 
-    var results []byte
-    {
+	var results []byte
+	{
 		stageStart := r.clock.Now()
 		r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageDownloadResults, Kind: KindStart})
 

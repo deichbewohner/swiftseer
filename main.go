@@ -9,16 +9,16 @@ import (
 )
 
 func main() {
-    if len(os.Args) < 2 {
-        printUsage()
-        os.Exit(1)
-    }
+	if len(os.Args) < 2 {
+		printUsage()
+		os.Exit(1)
+	}
 
-    subcommand := os.Args[1]
-    args := os.Args[2:]
+	subcommand := os.Args[1]
+	args := os.Args[2:]
 
-    var err error
-    switch subcommand {
+	var err error
+	switch subcommand {
 	case "login":
 		err = cmd.LoginCmd(args)
 	case "logout":
@@ -39,10 +39,10 @@ func main() {
 		os.Exit(1)
 	}
 
-    if err != nil {
-        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-        os.Exit(1)
-    }
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func printUsage() {

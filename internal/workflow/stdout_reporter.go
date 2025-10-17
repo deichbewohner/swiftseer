@@ -7,11 +7,11 @@ import (
 )
 
 type StdoutReporter struct {
-    w       io.Writer
-    verbose bool
+	w       io.Writer
+	verbose bool
 
-    lastCompleted int
-    lastTotal     int
+	lastCompleted int
+	lastTotal     int
 }
 
 func NewStdoutReporter(w io.Writer, verbose bool) *StdoutReporter {
@@ -75,7 +75,7 @@ func (s *StdoutReporter) OnEvent(e Event) {
 				_, _ = fmt.Fprintf(s.w, "warning: status poll error (retrying): %v\n", e.Err)
 			}
 		} else if e.Kind == KindUpdate || e.Progress != nil {
-            if e.Progress.Completed != s.lastCompleted || e.Progress.Total != s.lastTotal {
+			if e.Progress.Completed != s.lastCompleted || e.Progress.Total != s.lastTotal {
 				s.lastCompleted = e.Progress.Completed
 				s.lastTotal = e.Progress.Total
 
