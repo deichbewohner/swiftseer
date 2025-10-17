@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+          - { goos: darwin,  goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build ${{ matrix.target.goos }}/${{ matrix.target.goarch }}
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          make build GOOS=${{ matrix.target.goos }} GOARCH=${{ matrix.target.goarch }}
+          if [ "${{ matrix.target.goos }}" = "windows" ]; then
+            ext=".exe"
+          else
+            ext=""
+          fi
+          mkdir -p dist
+          cp "bin/swiftseer$ext" "dist/swiftseer_${{ matrix.target.goos }}_${{ matrix.target.goarch }}$ext"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
