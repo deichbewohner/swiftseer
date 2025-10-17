@@ -26,14 +26,8 @@ func ForecastCmd(args []string) error {
 	csvPath := opts.CSVPath
 
 	if reportID == 0 {
-		if _, err := os.Stat(csvPath); err != nil {
-			return fmt.Errorf("CSV file not found: %s", csvPath)
-		}
-		if horizon <= 0 {
-			return fmt.Errorf("horizon must be positive")
-		}
-		if confidence <= 0 || confidence >= 1 {
-			return fmt.Errorf("confidence must be between 0 and 1")
+		if err := validateNewRunInputs(csvPath, horizon, confidence); err != nil {
+			return err
 		}
 	}
 
@@ -72,114 +66,15 @@ func ForecastCmd(args []string) error {
 		term.IsTerminal(int(os.Stdout.Fd())),
 	)
 
-	var resultsJSON []byte
-	var actualReportID int
-
 	if useTUI {
-		params := ui.ForecastParams{
-			CSVPath:        csvPath,
-			Horizon:        horizon,
-			Confidence:     confidence,
-			Title:          title,
-			Output:         output,
-			Verbose:        verbose,
-			TokenExpiresAt: cfg.TokenExpiresAt,
-			Clean:          clean,
-		}
-
-		api := workflow.NewClientAdapter(apiClient)
-		_ = apiClient.EnsureValidToken(ctx)
-		params.TokenExpiresAt = cfg.TokenExpiresAt
-		forecastModel := ui.NewForecastModel(ctx, api, params)
-		p := tea.NewProgram(forecastModel)
-
-		// restore terminal state on panic
-		var terminalState *term.State
-		if term.IsTerminal(int(os.Stdin.Fd())) {
-			terminalState, _ = term.GetState(int(os.Stdin.Fd()))
-		}
-
-		defer func() {
-			if r := recover(); r != nil {
-				if terminalState != nil {
-					_ = term.Restore(int(os.Stdin.Fd()), terminalState)
-				}
-				panic(r)
-			}
-		}()
-
-		finalModel, err := p.Run()
-		if err != nil {
-			return fmt.Errorf("forecast UI error: %w", err)
-		}
-
-		result := finalModel.(*ui.ForecastModel)
-		workflowResult, outputPath, err := result.Result()
-		if err != nil {
-			return fmt.Errorf("forecast failed: %w", err)
-		}
-
-		if err := os.WriteFile(outputPath, workflowResult.Results, 0644); err != nil {
-			return fmt.Errorf("failed to write results to file: %w", err)
-		}
-
-		return nil
+		return runTUIForecast(ctx, cfg, apiClient, csvPath, horizon, confidence, title, output, verbose, clean)
 	}
 
 	if reportID > 0 {
-		actualReportID = reportID
-
-		var cleanPolicy workflow.CleanPolicy
-		if clean {
-			cleanPolicy = workflow.CleanOnSuccess
-		} else {
-			cleanPolicy = workflow.CleanNever
-		}
-
-		runner, reporter := newWorkflowRunner(apiClient, cleanPolicy, jsonEvents, verbose)
-
-		if !jsonEvents {
-			now := time.Now()
-			rid := actualReportID
-			reporter.OnEvent(workflow.Event{At: now, Stage: workflow.StageStartForecast, Kind: workflow.KindComplete, ReportID: &rid})
-		}
-
-		result, err := runner.Resume(ctx, actualReportID)
-		if err != nil {
-			return fmt.Errorf("forecast resume failed: %w", err)
-		}
-
-		resultsJSON = result.Results
-
-		if err := os.WriteFile(output, resultsJSON, 0644); err != nil {
-			return fmt.Errorf("failed to write results to file: %w", err)
-		}
-	} else {
-		var cleanPolicy workflow.CleanPolicy
-		if clean {
-			cleanPolicy = workflow.CleanOnSuccess
-		} else {
-			cleanPolicy = workflow.CleanNever
-		}
-
-		runner, _ := newWorkflowRunner(apiClient, cleanPolicy, jsonEvents, verbose)
-
-		result, err := runner.Run(ctx, workflow.RunParams{
-			CSVPath:    csvPath,
-			Horizon:    horizon,
-			Confidence: confidence,
-			Title:      title,
-		})
-		if err != nil {
-			return fmt.Errorf("forecast workflow failed: %w", err)
-		}
-
-		if err := os.WriteFile(output, result.Results, 0644); err != nil {
-			return fmt.Errorf("failed to write results to file: %w", err)
-		}
+		return resumeForecast(ctx, apiClient, reportID, clean, jsonEvents, verbose, output)
 	}
 
-	return nil
+	return runHeadlessForecast(ctx, apiClient, csvPath, horizon, confidence, title, clean, jsonEvents, verbose, output)
 }
 
 func newWorkflowRunner(
@@ -217,4 +112,130 @@ func shouldUseTUI(reportID int, noUI, jsonEvents, stdinTTY, stdoutTTY bool) bool
 		return false
 	}
 	return true
+}
+
+func validateNewRunInputs(csvPath string, horizon int, confidence float64) error {
+	if _, err := os.Stat(csvPath); err != nil {
+		return fmt.Errorf("CSV file not found: %s", csvPath)
+	}
+	if horizon <= 0 {
+		return fmt.Errorf("horizon must be positive")
+	}
+	if confidence <= 0 || confidence >= 1 {
+		return fmt.Errorf("confidence must be between 0 and 1")
+	}
+	return nil
+}
+
+func cleanPolicyOf(clean bool) workflow.CleanPolicy {
+	if clean {
+		return workflow.CleanOnSuccess
+	}
+	return workflow.CleanNever
+}
+
+func runTUIForecast(
+	ctx context.Context,
+	cfg *config.Config,
+	apiClient *client.Client,
+	csvPath string,
+	horizon int,
+	confidence float64,
+	title string,
+	output string,
+	verbose bool,
+	clean bool,
+) error {
+	params := ui.ForecastParams{
+		CSVPath:        csvPath,
+		Horizon:        horizon,
+		Confidence:     confidence,
+		Title:          title,
+		Output:         output,
+		Verbose:        verbose,
+		TokenExpiresAt: cfg.TokenExpiresAt,
+		Clean:          clean,
+	}
+	api := workflow.NewClientAdapter(apiClient)
+	_ = apiClient.EnsureValidToken(ctx)
+	params.TokenExpiresAt = cfg.TokenExpiresAt
+	forecastModel := ui.NewForecastModel(ctx, api, params)
+	p := tea.NewProgram(forecastModel)
+
+	var terminalState *term.State
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		terminalState, _ = term.GetState(int(os.Stdin.Fd()))
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			if terminalState != nil {
+				_ = term.Restore(int(os.Stdin.Fd()), terminalState)
+			}
+			panic(r)
+		}
+	}()
+
+	finalModel, err := p.Run()
+	if err != nil {
+		return fmt.Errorf("forecast UI error: %w", err)
+	}
+	result := finalModel.(*ui.ForecastModel)
+	workflowResult, outputPath, err := result.Result()
+	if err != nil {
+		return fmt.Errorf("forecast failed: %w", err)
+	}
+	if err := os.WriteFile(outputPath, workflowResult.Results, 0644); err != nil {
+		return fmt.Errorf("failed to write results to file: %w", err)
+	}
+	return nil
+}
+
+func resumeForecast(
+	ctx context.Context,
+	apiClient *client.Client,
+	reportID int,
+	clean bool,
+	jsonEvents bool,
+	verbose bool,
+	output string,
+) error {
+	cleanPolicy := cleanPolicyOf(clean)
+	runner, reporter := newWorkflowRunner(apiClient, cleanPolicy, jsonEvents, verbose)
+	if !jsonEvents {
+		now := time.Now()
+		rid := reportID
+		reporter.OnEvent(workflow.Event{At: now, Stage: workflow.StageStartForecast, Kind: workflow.KindComplete, ReportID: &rid})
+	}
+	result, err := runner.Resume(ctx, reportID)
+	if err != nil {
+		return fmt.Errorf("forecast resume failed: %w", err)
+	}
+	if err := os.WriteFile(output, result.Results, 0644); err != nil {
+		return fmt.Errorf("failed to write results to file: %w", err)
+	}
+	return nil
+}
+
+func runHeadlessForecast(
+	ctx context.Context,
+	apiClient *client.Client,
+	csvPath string,
+	horizon int,
+	confidence float64,
+	title string,
+	clean bool,
+	jsonEvents bool,
+	verbose bool,
+	output string,
+) error {
+	cleanPolicy := cleanPolicyOf(clean)
+	runner, _ := newWorkflowRunner(apiClient, cleanPolicy, jsonEvents, verbose)
+	result, err := runner.Run(ctx, workflow.RunParams{CSVPath: csvPath, Horizon: horizon, Confidence: confidence, Title: title})
+	if err != nil {
+		return fmt.Errorf("forecast workflow failed: %w", err)
+	}
+	if err := os.WriteFile(output, result.Results, 0644); err != nil {
+		return fmt.Errorf("failed to write results to file: %w", err)
+	}
+	return nil
 }

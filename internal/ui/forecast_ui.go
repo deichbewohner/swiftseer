@@ -184,211 +184,230 @@ func (m *ForecastModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case jobStartedMsg:
 		return m, tea.Batch(m.subscribeNextEvent(), m.waitForCompletion())
-
 	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC:
-			if m.job != nil {
-				m.job.Cancel()
-			}
-			m.done = true
-			m.quitting = true
-			m.err = fmt.Errorf("cancelled by user")
-			return m, tea.Quit
-		}
-
+		return m.handleKey(msg)
 	case spinner.TickMsg:
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
-
+		return m.handleSpinner(msg)
 	case workflow.Event:
-		e := msg
-
-		switch e.Kind {
-		case workflow.KindStart:
-			m.currentStage = e.Stage
-			if stage, ok := m.stages[e.Stage]; ok && stage.StartTime.IsZero() {
-				stage.StartTime = e.At
-			}
-		case workflow.KindComplete:
-			if stage, ok := m.stages[e.Stage]; ok {
-				stage.Complete = true
-				if e.Duration != nil {
-					stage.Duration = *e.Duration
-				}
-			}
-		case workflow.KindError:
-			if stage, ok := m.stages[e.Stage]; ok {
-				stage.Error = e.Err
-			}
-		case workflow.KindUpdate:
-		default:
-
-			if e.Duration == nil && e.Err == nil && e.Progress == nil {
-				m.currentStage = e.Stage
-				if stage, ok := m.stages[e.Stage]; ok && stage.StartTime.IsZero() {
-					stage.StartTime = e.At
-				}
-			} else if e.Duration != nil {
-				if stage, ok := m.stages[e.Stage]; ok {
-					stage.Complete = true
-					stage.Duration = *e.Duration
-				}
-			} else if e.Err != nil {
-				if stage, ok := m.stages[e.Stage]; ok {
-					stage.Error = e.Err
-				}
-			}
-		}
-
-		if e.Progress != nil {
-			m.completed = e.Progress.Completed
-			m.total = e.Progress.Total
-			m.running = e.Progress.Running
-		}
-
-		if e.ReportID != nil {
-			m.reportID = *e.ReportID
-		}
-
-		return m, m.subscribeNextEvent()
-
+		return m.handleWorkflowEvent(msg)
 	case eventsClosedMsg:
-		if m.result != nil {
-			m.done = true
-			m.quitting = true
-			return m, tea.Quit
-		}
-		return m, nil
-
+		return m.handleEventsClosed()
 	case workflowCompleteMsg:
-		m.result = msg.result
-		return m, nil
-
+		return m.handleWorkflowComplete(msg.result)
 	case workflowErrorMsg:
-		m.done = true
-		m.quitting = true
-		m.err = msg.err
-		return m, tea.Quit
-
+		return m.handleWorkflowError(msg.err)
 	case tea.QuitMsg:
 		if m.job != nil {
 			m.job.Cancel()
 		}
 		return m, tea.Quit
 	}
-
 	return m, nil
+}
+
+func (m *ForecastModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.Type == tea.KeyCtrlC {
+		if m.job != nil {
+			m.job.Cancel()
+		}
+		m.done = true
+		m.quitting = true
+		m.err = fmt.Errorf("cancelled by user")
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m *ForecastModel) handleSpinner(msg spinner.TickMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	m.spinner, cmd = m.spinner.Update(msg)
+	return m, cmd
+}
+
+func (m *ForecastModel) handleWorkflowEvent(e workflow.Event) (tea.Model, tea.Cmd) {
+	m.applyStageEvent(e)
+	return m, m.subscribeNextEvent()
+}
+
+func (m *ForecastModel) handleEventsClosed() (tea.Model, tea.Cmd) {
+	if m.result != nil {
+		m.done = true
+		m.quitting = true
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m *ForecastModel) handleWorkflowComplete(res *workflow.RunResult) (tea.Model, tea.Cmd) {
+	m.result = res
+	return m, nil
+}
+
+func (m *ForecastModel) handleWorkflowError(err error) (tea.Model, tea.Cmd) {
+	m.done = true
+	m.quitting = true
+	m.err = err
+	return m, tea.Quit
+}
+
+func (m *ForecastModel) applyStageEvent(e workflow.Event) {
+	switch e.Kind {
+	case workflow.KindStart:
+		m.currentStage = e.Stage
+		if stage, ok := m.stages[e.Stage]; ok && stage.StartTime.IsZero() {
+			stage.StartTime = e.At
+		}
+	case workflow.KindComplete:
+		if stage, ok := m.stages[e.Stage]; ok {
+			stage.Complete = true
+			if e.Duration != nil {
+				stage.Duration = *e.Duration
+			}
+		}
+	case workflow.KindError:
+		if stage, ok := m.stages[e.Stage]; ok {
+			stage.Error = e.Err
+		}
+	default:
+		if e.Duration == nil && e.Err == nil && e.Progress == nil {
+			m.currentStage = e.Stage
+			if stage, ok := m.stages[e.Stage]; ok && stage.StartTime.IsZero() {
+				stage.StartTime = e.At
+			}
+		} else if e.Duration != nil {
+			if stage, ok := m.stages[e.Stage]; ok {
+				stage.Complete = true
+				stage.Duration = *e.Duration
+			}
+		} else if e.Err != nil {
+			if stage, ok := m.stages[e.Stage]; ok {
+				stage.Error = e.Err
+			}
+		}
+	}
+	if e.Progress != nil {
+		m.completed = e.Progress.Completed
+		m.total = e.Progress.Total
+		m.running = e.Progress.Running
+	}
+	if e.ReportID != nil {
+		m.reportID = *e.ReportID
+	}
 }
 
 func (m *ForecastModel) View() string {
 	var content string
+	content += m.renderHeader()
 
-	grayStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	whiteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	content += grayStyle.Render(
-		">_",
-	) + " " + whiteStyle.Render(
-		"future",
-	) + " " + grayStyle.Render(
-		"("+version.GetVersion()+")",
-	) + "\n\n"
-
-	stagesToRender := []workflow.Stage{
-		workflow.StageUpload,
-		workflow.StageCheckIn,
-	}
-	if m.cleanPolicy != workflow.CleanNever {
-		stagesToRender = append(stagesToRender, workflow.StageDeleteUpload)
-	}
-	stagesToRender = append(stagesToRender,
-		workflow.StageStartForecast,
-		workflow.StagePoll,
-		workflow.StageDownloadResults,
-	)
-	if m.cleanPolicy != workflow.CleanNever {
-		stagesToRender = append(stagesToRender, workflow.StageDeleteReport)
-	}
-
-	for _, stage := range stagesToRender {
+	for _, stage := range m.stagesToRender() {
 		status := m.stages[stage]
 		if status == nil {
 			continue
 		}
-
-		var icon string
-		var text string
-
-		if status.Error != nil {
-			icon = ErrorStyle.Render("✗")
-			text = fmt.Sprintf("%s (failed)", status.Name)
-		} else if status.Complete {
-			icon = SuccessStyle.Render("✓")
-			text = status.Name
-			if status.Duration > 0 {
-				text += fmt.Sprintf("  (%v)", status.Duration.Round(100*time.Millisecond))
-			}
-		} else if m.currentStage == stage {
-			icon = m.spinner.View()
-			text = fmt.Sprintf("%s...", status.Name)
-			if !status.StartTime.IsZero() {
-				elapsed := time.Since(status.StartTime).Round(time.Second)
-				text += fmt.Sprintf("  (%v)", elapsed)
-			}
-		} else {
-			icon = InfoStyle.Render("○")
-			text = status.Name
-		}
-
-		content += fmt.Sprintf("  %s %s\n", icon, text)
+		content += m.renderStage(stage, status)
 	}
 
-	if m.currentStage == workflow.StagePoll && m.total > 0 {
-		content += "\n"
-
-		percentComplete := float64(m.completed) / float64(m.total)
-		content += fmt.Sprintf("Progress: %d/%d (%s)\n",
-			m.completed, m.total,
-			progressBarStyle.Render(fmt.Sprintf("%.0f%%", percentComplete*100)))
-
-		content += m.progress.ViewAs(percentComplete) + "\n\n"
-
-		if stage, ok := m.stages[workflow.StagePoll]; ok && !stage.StartTime.IsZero() {
-			elapsed := time.Since(stage.StartTime)
-			var etaStr string
-			if percentComplete > 0 && percentComplete < 1 {
-				eta := time.Duration(float64(elapsed) / percentComplete * (1 - percentComplete))
-				etaStr = fmt.Sprintf(" | ETA: %v", eta.Round(time.Second))
-			}
-
-			var tokenStr string
-			tokenRemaining := time.Until(m.tokenExpiresAt)
-			if tokenRemaining > 0 {
-				formattedTime := tokenRemaining.Round(time.Minute)
-				timeDisplay := strings.TrimSuffix(formattedTime.String(), "0s")
-				if tokenRemaining < 5*time.Minute {
-					tokenStr = fmt.Sprintf(" | Token: %s",
-						ErrorStyle.Render(timeDisplay))
-				} else {
-					tokenStr = fmt.Sprintf(" | Token: %s", timeDisplay)
-				}
-			}
-
-			content += statsStyle.Render(fmt.Sprintf(
-				"Running: %d%s%s",
-				m.running, etaStr, tokenStr))
-			content += "\n"
-		}
-
-		content += statsStyle.Render(fmt.Sprintf("Report: %d", m.reportID))
-	}
+	content += m.renderProgress()
 
 	view := forecastBoxStyle.Render(content)
 	if m.quitting {
 		return view + "\n"
 	}
 	return view
+}
+
+func (m *ForecastModel) renderHeader() string {
+	grayStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	whiteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	return grayStyle.Render(
+		">_",
+	) + " " + whiteStyle.Render(
+		"future",
+	) + " " + grayStyle.Render(
+		"("+version.GetVersion()+")",
+	) + "\n\n"
+}
+
+func (m *ForecastModel) stagesToRender() []workflow.Stage {
+	list := []workflow.Stage{
+		workflow.StageUpload,
+		workflow.StageCheckIn,
+	}
+	if m.cleanPolicy != workflow.CleanNever {
+		list = append(list, workflow.StageDeleteUpload)
+	}
+	list = append(list,
+		workflow.StageStartForecast,
+		workflow.StagePoll,
+		workflow.StageDownloadResults,
+	)
+	if m.cleanPolicy != workflow.CleanNever {
+		list = append(list, workflow.StageDeleteReport)
+	}
+	return list
+}
+
+func (m *ForecastModel) renderStage(stage workflow.Stage, status *StageStatus) string {
+	var icon string
+	var text string
+	if status.Error != nil {
+		icon = ErrorStyle.Render("✗")
+		text = fmt.Sprintf("%s (failed)", status.Name)
+	} else if status.Complete {
+		icon = SuccessStyle.Render("✓")
+		text = status.Name
+		if status.Duration > 0 {
+			text += fmt.Sprintf("  (%v)", status.Duration.Round(100*time.Millisecond))
+		}
+	} else if m.currentStage == stage {
+		icon = m.spinner.View()
+		text = fmt.Sprintf("%s...", status.Name)
+		if !status.StartTime.IsZero() {
+			elapsed := time.Since(status.StartTime).Round(time.Second)
+			text += fmt.Sprintf("  (%v)", elapsed)
+		}
+	} else {
+		icon = InfoStyle.Render("○")
+		text = status.Name
+	}
+	return fmt.Sprintf("  %s %s\n", icon, text)
+}
+
+func (m *ForecastModel) renderProgress() string {
+	if m.currentStage != workflow.StagePoll || m.total <= 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n")
+	percentComplete := float64(m.completed) / float64(m.total)
+	b.WriteString(fmt.Sprintf("Progress: %d/%d (%s)\n",
+		m.completed, m.total,
+		progressBarStyle.Render(fmt.Sprintf("%.0f%%", percentComplete*100))))
+	b.WriteString(m.progress.ViewAs(percentComplete))
+	b.WriteString("\n\n")
+	if stage, ok := m.stages[workflow.StagePoll]; ok && !stage.StartTime.IsZero() {
+		elapsed := time.Since(stage.StartTime)
+		var etaStr string
+		if percentComplete > 0 && percentComplete < 1 {
+			eta := time.Duration(float64(elapsed) / percentComplete * (1 - percentComplete))
+			etaStr = fmt.Sprintf(" | ETA: %v", eta.Round(time.Second))
+		}
+		var tokenStr string
+		tokenRemaining := time.Until(m.tokenExpiresAt)
+		if tokenRemaining > 0 {
+			formattedTime := tokenRemaining.Round(time.Minute)
+			timeDisplay := strings.TrimSuffix(formattedTime.String(), "0s")
+			if tokenRemaining < 5*time.Minute {
+				tokenStr = fmt.Sprintf(" | Token: %s", ErrorStyle.Render(timeDisplay))
+			} else {
+				tokenStr = fmt.Sprintf(" | Token: %s", timeDisplay)
+			}
+		}
+		b.WriteString(statsStyle.Render(fmt.Sprintf("Running: %d%s%s", m.running, etaStr, tokenStr)))
+		b.WriteString("\n")
+	}
+	b.WriteString(statsStyle.Render(fmt.Sprintf("Report: %d", m.reportID)))
+	return b.String()
 }
 
 func (m *ForecastModel) Result() (*workflow.RunResult, string, error) {

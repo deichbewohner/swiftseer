@@ -247,89 +247,9 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 		})
 	}
 
-	var status *models.StatusResponse
-	{
-		stageStart := r.clock.Now()
-		r.reporter.OnEvent(
-			Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindStart, ReportID: &reportID},
-		)
-
-		ticker := r.clock.NewTicker(r.pollInterval)
-		defer ticker.Stop()
-
-		firstPoll := true
-
-		for {
-			if !firstPoll {
-				select {
-				case <-ctx.Done():
-					r.reporter.OnEvent(
-						Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindError, Err: ctx.Err()},
-					)
-					return nil, &RunError{Stage: StagePoll, Err: ctx.Err()}
-				case <-ticker.Chan():
-				}
-			}
-			firstPoll = false
-
-			select {
-			case <-ctx.Done():
-				r.reporter.OnEvent(
-					Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindError, Err: ctx.Err()},
-				)
-				return nil, &RunError{Stage: StagePoll, Err: ctx.Err()}
-			default:
-			}
-
-			pollCtx, cancel := context.WithTimeout(ctx, PollRequestTimeout)
-			currentStatus, err := r.api.GetStatus(pollCtx, reportID)
-			cancel()
-
-			if err != nil {
-				// transient polling error: report and retry
-				r.reporter.OnEvent(
-					Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindError, Err: err},
-				)
-				continue
-			}
-
-			progress := Progress{
-				Completed: currentStatus.StatusSummary.Computed,
-				Total:     currentStatus.StatusSummary.Created,
-				Running:   currentStatus.StatusSummary.Running,
-			}
-			r.reporter.OnEvent(Event{
-				At:       r.clock.Now(),
-				Stage:    StagePoll,
-				Kind:     KindUpdate,
-				ReportID: &reportID,
-				Progress: &progress,
-			})
-
-			if r.tokenExp != nil {
-				remaining := r.clock.Until(*r.tokenExp)
-				if remaining > 0 {
-					r.reporter.OnEvent(Event{
-						At:             r.clock.Now(),
-						Stage:          StagePoll,
-						Kind:           KindUpdate,
-						TokenRemaining: &remaining,
-					})
-				}
-			}
-
-			if currentStatus.StatusSummary.IsComplete() {
-				status = currentStatus
-				duration := r.clock.Since(stageStart)
-				r.reporter.OnEvent(Event{
-					At:       r.clock.Now(),
-					Stage:    StagePoll,
-					Kind:     KindComplete,
-					Duration: &duration,
-				})
-				break
-			}
-		}
+	status, err := r.pollUntilComplete(ctx, reportID)
+	if err != nil {
+		return nil, err
 	}
 
 	var results []byte
@@ -397,144 +317,18 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 func (r *Runner) Resume(ctx context.Context, reportID int) (*RunResult, error) {
 	start := r.clock.Now()
 
-	var status *models.StatusResponse
-	{
-		stageStart := r.clock.Now()
-		r.reporter.OnEvent(
-			Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindStart, ReportID: &reportID},
-		)
-
-		ticker := r.clock.NewTicker(r.pollInterval)
-		defer ticker.Stop()
-
-		firstPoll := true
-
-		for {
-			if !firstPoll {
-				select {
-				case <-ctx.Done():
-					r.reporter.OnEvent(
-						Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindError, Err: ctx.Err()},
-					)
-					return nil, &RunError{Stage: StagePoll, Err: ctx.Err()}
-				case <-ticker.Chan():
-				}
-			}
-			firstPoll = false
-
-			select {
-			case <-ctx.Done():
-				r.reporter.OnEvent(
-					Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindError, Err: ctx.Err()},
-				)
-				return nil, &RunError{Stage: StagePoll, Err: ctx.Err()}
-			default:
-			}
-
-			pollCtx, cancel := context.WithTimeout(ctx, PollRequestTimeout)
-			currentStatus, err := r.api.GetStatus(pollCtx, reportID)
-			cancel()
-
-			if err != nil {
-				// transient polling error: report and retry
-				r.reporter.OnEvent(
-					Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindError, Err: err},
-				)
-				continue
-			}
-
-			progress := Progress{
-				Completed: currentStatus.StatusSummary.Computed,
-				Total:     currentStatus.StatusSummary.Created,
-				Running:   currentStatus.StatusSummary.Running,
-			}
-			r.reporter.OnEvent(Event{
-				At:       r.clock.Now(),
-				Stage:    StagePoll,
-				Kind:     KindUpdate,
-				ReportID: &reportID,
-				Progress: &progress,
-			})
-
-			if r.tokenExp != nil {
-				remaining := r.clock.Until(*r.tokenExp)
-				if remaining > 0 {
-					r.reporter.OnEvent(Event{
-						At:             r.clock.Now(),
-						Stage:          StagePoll,
-						Kind:           KindUpdate,
-						TokenRemaining: &remaining,
-					})
-				}
-			}
-
-			if currentStatus.StatusSummary.IsComplete() {
-				status = currentStatus
-				duration := r.clock.Since(stageStart)
-				r.reporter.OnEvent(Event{
-					At:       r.clock.Now(),
-					Stage:    StagePoll,
-					Kind:     KindComplete,
-					Duration: &duration,
-				})
-				break
-			}
-		}
+	status, err := r.pollUntilComplete(ctx, reportID)
+	if err != nil {
+		return nil, err
 	}
 
-	var results []byte
-	{
-		stageStart := r.clock.Now()
-		r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageDownloadResults, Kind: KindStart})
-
-		opts := &models.ResultsOptions{
-			IncludeKBestModels:     1,
-			IncludeBacktesting:     false,
-			IncludeDiscardedModels: false,
-		}
-
-		downloadCtx, cancel := context.WithTimeout(ctx, DownloadTimeout)
-		defer cancel()
-
-		var err error
-		results, err = r.api.GetResults(downloadCtx, reportID, opts)
-		if err != nil {
-			r.reporter.OnEvent(
-				Event{At: r.clock.Now(), Stage: StageDownloadResults, Kind: KindError, Err: err},
-			)
-			return nil, &RunError{Stage: StageDownloadResults, Err: err}
-		}
-
-		duration := r.clock.Since(stageStart)
-		r.reporter.OnEvent(Event{
-			At:       r.clock.Now(),
-			Stage:    StageDownloadResults,
-			Kind:     KindComplete,
-			Duration: &duration,
-		})
+	results, err := r.downloadResults(ctx, reportID)
+	if err != nil {
+		return nil, err
 	}
 
 	if r.clean == CleanOnSuccess || r.clean == CleanAlways {
-		stageStart := r.clock.Now()
-		r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageDeleteReport, Kind: KindStart})
-
-		deleteCtx, cancel := context.WithTimeout(ctx, DeleteTimeout)
-		defer cancel()
-
-		if err := r.api.DeleteReport(deleteCtx, reportID); err != nil {
-			// best-effort: report but don't fail
-			r.reporter.OnEvent(
-				Event{At: r.clock.Now(), Stage: StageDeleteReport, Kind: KindError, Err: err},
-			)
-		} else {
-			duration := r.clock.Since(stageStart)
-			r.reporter.OnEvent(Event{
-				At:       r.clock.Now(),
-				Stage:    StageDeleteReport,
-				Kind:     KindComplete,
-				Duration: &duration,
-			})
-		}
+		r.deleteReport(ctx, reportID)
 	}
 
 	return &RunResult{
@@ -543,4 +337,87 @@ func (r *Runner) Resume(ctx context.Context, reportID int) (*RunResult, error) {
 		Results:  results,
 		Total:    r.clock.Since(start),
 	}, nil
+}
+
+func (r *Runner) pollUntilComplete(ctx context.Context, reportID int) (*models.StatusResponse, error) {
+	stageStart := r.clock.Now()
+	r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindStart, ReportID: &reportID})
+
+	pollOnce := func() (*models.StatusResponse, error) {
+		pollCtx, cancel := context.WithTimeout(ctx, PollRequestTimeout)
+		status, err := r.api.GetStatus(pollCtx, reportID)
+		cancel()
+		if err != nil {
+			r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindError, Err: err})
+			return nil, nil
+		}
+		progress := Progress{
+			Completed: status.StatusSummary.Computed,
+			Total:     status.StatusSummary.Created,
+			Running:   status.StatusSummary.Running,
+		}
+		r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindUpdate, ReportID: &reportID, Progress: &progress})
+		if r.tokenExp != nil {
+			remaining := r.clock.Until(*r.tokenExp)
+			if remaining > 0 {
+				r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindUpdate, TokenRemaining: &remaining})
+			}
+		}
+		if status.StatusSummary.IsComplete() {
+			duration := r.clock.Since(stageStart)
+			r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindComplete, Duration: &duration})
+			return status, nil
+		}
+		return nil, nil
+	}
+
+	if st, err := pollOnce(); st != nil || err != nil {
+		return st, err
+	}
+
+	ticker := r.clock.NewTicker(r.pollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StagePoll, Kind: KindError, Err: ctx.Err()})
+			return nil, &RunError{Stage: StagePoll, Err: ctx.Err()}
+		case <-ticker.Chan():
+			if st, err := pollOnce(); st != nil || err != nil {
+				return st, err
+			}
+		}
+	}
+}
+
+func (r *Runner) downloadResults(ctx context.Context, reportID int) ([]byte, error) {
+	stageStart := r.clock.Now()
+	r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageDownloadResults, Kind: KindStart})
+
+	opts := &models.ResultsOptions{IncludeKBestModels: 1, IncludeBacktesting: false, IncludeDiscardedModels: false}
+
+	downloadCtx, cancel := context.WithTimeout(ctx, DownloadTimeout)
+	defer cancel()
+	results, err := r.api.GetResults(downloadCtx, reportID, opts)
+	if err != nil {
+		r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageDownloadResults, Kind: KindError, Err: err})
+		return nil, &RunError{Stage: StageDownloadResults, Err: err}
+	}
+	duration := r.clock.Since(stageStart)
+	r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageDownloadResults, Kind: KindComplete, Duration: &duration})
+	return results, nil
+}
+
+func (r *Runner) deleteReport(ctx context.Context, reportID int) {
+	stageStart := r.clock.Now()
+	r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageDeleteReport, Kind: KindStart})
+
+	deleteCtx, cancel := context.WithTimeout(ctx, DeleteTimeout)
+	defer cancel()
+	if err := r.api.DeleteReport(deleteCtx, reportID); err != nil {
+		r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageDeleteReport, Kind: KindError, Err: err})
+		return
+	}
+	duration := r.clock.Since(stageStart)
+	r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageDeleteReport, Kind: KindComplete, Duration: &duration})
 }

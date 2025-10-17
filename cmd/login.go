@@ -3,11 +3,13 @@ package cmd
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/deichbewohner/swiftseer/internal/client"
 	"github.com/deichbewohner/swiftseer/internal/config"
+	"github.com/deichbewohner/swiftseer/internal/models"
 	"github.com/deichbewohner/swiftseer/internal/ui"
 )
 
@@ -61,29 +63,10 @@ func LoginCmd(args []string) error {
 		if err != nil {
 			return fmt.Errorf("authentication failed: %w", err)
 		}
-		cfg.UpdateToken(
-			tokenResp.AccessToken,
-			tokenResp.RefreshToken,
-			tokenResp.ExpiresIn,
-			tokenResp.RefreshExpiresIn,
-		)
-		if err := cfgManager.Save(cfg); err != nil {
+		if err := applyTokensAndSave(cfgManager, cfg, tokenResp); err != nil {
 			return fmt.Errorf("failed to save config: %w", err)
 		}
-		fmt.Println()
-		fmt.Printf("%s Authentication successful!\n", ui.SuccessStyle.Render("✓"))
-		fmt.Printf("  User: %s\n", cfg.Username)
-		fmt.Printf("  Group: %s\n", cfg.Group)
-		fmt.Printf("  Environment: %s\n", cfg.Environment)
-		fmt.Printf(
-			"  Refresh token expires: %s\n",
-			cfg.RefreshExpiresAt.Format("2006-01-02 15:04:05"),
-		)
-		fmt.Printf(
-			"\n%s %s\n\n",
-			ui.InfoStyle.Render("Configuration saved to:"),
-			cfgManager.GetConfigPath(),
-		)
+		printAuthSummary(os.Stdout, cfgManager, cfg)
 		return nil
 	}
 
@@ -104,28 +87,10 @@ func LoginCmd(args []string) error {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 
-	cfg.UpdateToken(
-		tokenResp.AccessToken,
-		tokenResp.RefreshToken,
-		tokenResp.ExpiresIn,
-		tokenResp.RefreshExpiresIn,
-	)
-
-	if err := cfgManager.Save(cfg); err != nil {
+	if err := applyTokensAndSave(cfgManager, cfg, tokenResp); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
-
-	fmt.Println()
-	fmt.Printf("%s Authentication successful!\n", ui.SuccessStyle.Render("✓"))
-	fmt.Printf("  User: %s\n", cfg.Username)
-	fmt.Printf("  Group: %s\n", cfg.Group)
-	fmt.Printf("  Environment: %s\n", cfg.Environment)
-	fmt.Printf("  Refresh token expires: %s\n", cfg.RefreshExpiresAt.Format("2006-01-02 15:04:05"))
-	fmt.Printf(
-		"\n%s %s\n\n",
-		ui.InfoStyle.Render("Configuration saved to:"),
-		cfgManager.GetConfigPath(),
-	)
+	printAuthSummary(os.Stdout, cfgManager, cfg)
 
 	return nil
 }
@@ -174,4 +139,19 @@ Config: ~/.config/swiftseer/config.yaml
 		return "", "", "", fmt.Errorf("failed to parse flags: %w", err)
 	}
 	return username, group, environment, nil
+}
+
+func applyTokensAndSave(cfgManager *config.Manager, cfg *config.Config, t *models.TokenResponse) error {
+	cfg.UpdateToken(t.AccessToken, t.RefreshToken, t.ExpiresIn, t.RefreshExpiresIn)
+	return cfgManager.Save(cfg)
+}
+
+func printAuthSummary(w io.Writer, cfgManager *config.Manager, cfg *config.Config) {
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintf(w, "%s Authentication successful!\n", ui.SuccessStyle.Render("✓"))
+	_, _ = fmt.Fprintf(w, "  User: %s\n", cfg.Username)
+	_, _ = fmt.Fprintf(w, "  Group: %s\n", cfg.Group)
+	_, _ = fmt.Fprintf(w, "  Environment: %s\n", cfg.Environment)
+	_, _ = fmt.Fprintf(w, "  Refresh token expires: %s\n", cfg.RefreshExpiresAt.Format("2006-01-02 15:04:05"))
+	_, _ = fmt.Fprintf(w, "\n%s %s\n\n", ui.InfoStyle.Render("Configuration saved to:"), cfgManager.GetConfigPath())
 }
