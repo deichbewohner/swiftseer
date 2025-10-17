@@ -322,7 +322,7 @@ func (m *ForecastModel) renderHeader() string {
 	return grayStyle.Render(
 		">_",
 	) + " " + whiteStyle.Render(
-		"future",
+		"swiftseer",
 	) + " " + grayStyle.Render(
 		"("+version.GetVersion()+")",
 	) + "\n\n"
