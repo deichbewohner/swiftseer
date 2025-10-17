@@ -30,11 +30,13 @@ immediately from the terminal (or CI) without setting up a Python stack.
 
 </div>
 
+You will need a future account to use it.
+
 ## Use futureEXPERT for more
 
 For advanced workflows (covariates, analytics, pandas exports, plotting, rich
 configs), use the [official Python
-client](https://discovertomorrow.github.io/futureEXPERT/).
+client futureEXPERT](https://discovertomorrow.github.io/futureEXPERT/).
 
 ## Quick start
 - Build: `make build` (Go 1.25+). Binary: `bin/swiftseer`
