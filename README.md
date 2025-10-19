@@ -32,6 +32,8 @@ immediately from the terminal (or CI) without setting up a Python stack.
 
 You will need a future account to use it.
 
+Could this be done with a simple script? Yes, but this is more fun.
+
 ## Use futureEXPERT for more
 
 For advanced workflows (covariates, analytics, pandas exports, plotting, rich
