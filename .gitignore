@@ -34,3 +34,5 @@ go.work.sum
 /.internal
 /AGENTS.md
 /CLAUDE.md
+
+/bin/
