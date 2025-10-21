@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -75,7 +74,7 @@ func TestInspectCmd_JSON_Golden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read golden: %v", err)
 	}
-	if strings.TrimSpace(out) != strings.TrimSpace(string(want)) {
+	if normalizeNewlines(out) != normalizeNewlines(string(want)) {
 		t.Errorf("golden mismatch\nGot:\n%s\nWant:\n%s", out, string(want))
 	}
 }
@@ -97,7 +96,7 @@ func TestInspectCmd_JSON_Semicolon_Golden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read golden: %v", err)
 	}
-	if strings.TrimSpace(out) != strings.TrimSpace(string(want)) {
+	if normalizeNewlines(out) != normalizeNewlines(string(want)) {
 		t.Errorf("golden mismatch\nGot:\n%s\nWant:\n%s", out, string(want))
 	}
 }
@@ -119,7 +118,7 @@ func TestInspectCmd_JSON_Tab_Golden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read golden: %v", err)
 	}
-	if strings.TrimSpace(out) != strings.TrimSpace(string(want)) {
+	if normalizeNewlines(out) != normalizeNewlines(string(want)) {
 		t.Errorf("golden mismatch\nGot:\n%s\nWant:\n%s", out, string(want))
 	}
 }
@@ -141,7 +140,7 @@ func TestInspectCmd_JSON_EUDate_Golden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read golden: %v", err)
 	}
-	if strings.TrimSpace(out) != strings.TrimSpace(string(want)) {
+	if normalizeNewlines(out) != normalizeNewlines(string(want)) {
 		t.Errorf("golden mismatch\nGot:\n%s\nWant:\n%s", out, string(want))
 	}
 }

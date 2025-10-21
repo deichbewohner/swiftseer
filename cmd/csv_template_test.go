@@ -3,7 +3,6 @@ package cmd
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -18,7 +17,7 @@ func TestCsvTemplate_Default_Golden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read golden: %v", err)
 	}
-	if strings.TrimSpace(out) != strings.TrimSpace(string(want)) {
+	if normalizeNewlines(out) != normalizeNewlines(string(want)) {
 		t.Errorf("golden mismatch\nGot:\n%s\nWant:\n%s", out, string(want))
 	}
 }
@@ -34,7 +33,7 @@ func TestCsvTemplate_WithGroups_Golden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read golden: %v", err)
 	}
-	if strings.TrimSpace(out) != strings.TrimSpace(string(want)) {
+	if normalizeNewlines(out) != normalizeNewlines(string(want)) {
 		t.Errorf("golden mismatch\nGot:\n%s\nWant:\n%s", out, string(want))
 	}
 }
