@@ -27,7 +27,7 @@ RACE ?= -race
 endif
 TEST_FLAGS ?= $(RACE) -count=1
 
-.PHONY: all build build-all test clean tidy run cover help ci fmt lint vet hooks
+.PHONY: all build build-all test clean tidy run cover help ci fmt lint vet hooks cyclo
 
 all: build
 
@@ -74,6 +74,14 @@ clean:
 
 ci: test build
 
+cyclo:
+	@GOCYCLO=$$(command -v gocyclo 2>/dev/null || echo "$$($(GO) env GOPATH)/bin/gocyclo"); \
+	if [ ! -x "$$GOCYCLO" ]; then \
+		echo "gocyclo not found. Install with 'go install github.com/fzipp/gocyclo/cmd/gocyclo@latest'"; \
+		exit 1; \
+	fi; \
+	"$$GOCYCLO" -over 15 $$($(GO) list -f '{{.Dir}}' ./...)
+
 help:
 	@echo "Targets:"
 	@echo "  build       Build binary to $(OUT)"
@@ -83,6 +91,7 @@ help:
 	@echo "  run         Run the CLI with go run"
 	@echo "  tidy        Run go mod tidy"
 	@echo "  fmt         Format code with go fmt"
+	@echo "  cyclo       Run gocyclo with -over 15 across all packages"
 	@echo "  lint        Run golangci-lint (requires it to be installed)"
 	@echo "  clean       Remove build artifacts and caches"
 	@echo "  ci          Run tests and build"
