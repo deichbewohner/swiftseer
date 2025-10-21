@@ -256,46 +256,65 @@ func (m *ForecastModel) handleWorkflowError(err error) (tea.Model, tea.Cmd) {
 func (m *ForecastModel) applyStageEvent(e workflow.Event) {
 	switch e.Kind {
 	case workflow.KindStart:
-		m.currentStage = e.Stage
-		if stage, ok := m.stages[e.Stage]; ok && stage.StartTime.IsZero() {
-			stage.StartTime = e.At
-		}
+		m.markStageStart(e.Stage, e.At)
 	case workflow.KindComplete:
-		if stage, ok := m.stages[e.Stage]; ok {
-			stage.Complete = true
-			if e.Duration != nil {
-				stage.Duration = *e.Duration
-			}
-		}
+		m.markStageComplete(e.Stage, e.Duration)
 	case workflow.KindError:
-		if stage, ok := m.stages[e.Stage]; ok {
-			stage.Error = e.Err
-		}
+		m.markStageError(e.Stage, e.Err)
 	default:
-		if e.Duration == nil && e.Err == nil && e.Progress == nil {
-			m.currentStage = e.Stage
-			if stage, ok := m.stages[e.Stage]; ok && stage.StartTime.IsZero() {
-				stage.StartTime = e.At
-			}
-		} else if e.Duration != nil {
-			if stage, ok := m.stages[e.Stage]; ok {
-				stage.Complete = true
-				stage.Duration = *e.Duration
-			}
-		} else if e.Err != nil {
-			if stage, ok := m.stages[e.Stage]; ok {
-				stage.Error = e.Err
-			}
+		m.handleDefaultStageEvent(e)
+	}
+	m.updateStageProgress(e)
+	m.updateReportID(e)
+}
+
+func (m *ForecastModel) markStageStart(stage workflow.Stage, at time.Time) {
+	m.currentStage = stage
+	if status, ok := m.stages[stage]; ok && status.StartTime.IsZero() {
+		status.StartTime = at
+	}
+}
+
+func (m *ForecastModel) markStageComplete(stage workflow.Stage, duration *time.Duration) {
+	if status, ok := m.stages[stage]; ok {
+		status.Complete = true
+		if duration != nil {
+			status.Duration = *duration
 		}
 	}
-	if e.Progress != nil {
-		m.completed = e.Progress.Completed
-		m.total = e.Progress.Total
-		m.running = e.Progress.Running
+}
+
+func (m *ForecastModel) markStageError(stage workflow.Stage, err error) {
+	if status, ok := m.stages[stage]; ok {
+		status.Error = err
 	}
-	if e.ReportID != nil {
-		m.reportID = *e.ReportID
+}
+
+func (m *ForecastModel) handleDefaultStageEvent(e workflow.Event) {
+	switch {
+	case e.Duration == nil && e.Err == nil && e.Progress == nil:
+		m.markStageStart(e.Stage, e.At)
+	case e.Duration != nil:
+		m.markStageComplete(e.Stage, e.Duration)
+	case e.Err != nil:
+		m.markStageError(e.Stage, e.Err)
 	}
+}
+
+func (m *ForecastModel) updateStageProgress(e workflow.Event) {
+	if e.Progress == nil {
+		return
+	}
+	m.completed = e.Progress.Completed
+	m.total = e.Progress.Total
+	m.running = e.Progress.Running
+}
+
+func (m *ForecastModel) updateReportID(e workflow.Event) {
+	if e.ReportID == nil {
+		return
+	}
+	m.reportID = *e.ReportID
 }
 
 func (m *ForecastModel) View() string {

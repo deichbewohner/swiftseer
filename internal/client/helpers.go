@@ -25,6 +25,22 @@ var (
 		{"01/02/2006", "%m/%d/%Y"},
 		{"2006-01-02 15:04:05", "%Y-%m-%d %H:%M:%S"},
 	}
+
+	pythonLayoutDirectives = map[byte]string{
+		'Y': "2006",
+		'y': "06",
+		'm': "01",
+		'd': "02",
+		'H': "15",
+		'I': "03",
+		'M': "04",
+		'S': "05",
+		'f': "000000",
+		'p': "PM",
+		'z': "-0700",
+		'Z': "MST",
+		'%': "%",
+	}
 )
 
 func pythonToGoLayout(format string) (string, error) {
@@ -46,36 +62,11 @@ func pythonToGoLayout(format string) (string, error) {
 			return "", fmt.Errorf("incomplete format specifier")
 		}
 
-		switch format[i] {
-		case 'Y':
-			b.WriteString("2006")
-		case 'y':
-			b.WriteString("06")
-		case 'm':
-			b.WriteString("01")
-		case 'd':
-			b.WriteString("02")
-		case 'H':
-			b.WriteString("15")
-		case 'I':
-			b.WriteString("03")
-		case 'M':
-			b.WriteString("04")
-		case 'S':
-			b.WriteString("05")
-		case 'f':
-			b.WriteString("000000")
-		case 'p':
-			b.WriteString("PM")
-		case 'z':
-			b.WriteString("-0700")
-		case 'Z':
-			b.WriteString("MST")
-		case '%':
-			b.WriteString("%")
-		default:
+		layout, ok := pythonLayoutDirectives[format[i]]
+		if !ok {
 			return "", fmt.Errorf("unsupported format verb: %%%c", format[i])
 		}
+		b.WriteString(layout)
 	}
 
 	return b.String(), nil
@@ -102,87 +93,24 @@ func BuildCheckInRequestWithOverrides(fileUUID, csvPath string, overrides *model
 	reader.Comma = rune(delimiter[0])
 	reader.TrimLeadingSpace = true
 
-	header, err := reader.Read()
+	header, sampleRows, err := readCSVPreview(reader, 10)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read CSV header: %w", err)
+		return nil, err
 	}
 
-	var sampleRows [][]string
-	for i := 0; i < 10; i++ {
-		row, err := reader.Read()
-		if err != nil {
-			break
-		}
-		sampleRows = append(sampleRows, row)
+	dateColIdx, dateFormat, err := resolveDateColumn(header, sampleRows, overrides)
+	if err != nil {
+		return nil, err
 	}
 
-	if len(sampleRows) == 0 {
-		return nil, fmt.Errorf("CSV file is empty (no data rows)")
+	valueColIndices, err := resolveValueColumns(header, sampleRows, dateColIdx, overrides)
+	if err != nil {
+		return nil, err
 	}
 
-	// Resolve date column and format (apply overrides if present)
-	var dateColIdx int
-	var dateFormat string
-	if overrides != nil && overrides.DateColumn != "" {
-		idx := findColumnIndex(header, overrides.DateColumn)
-		if idx < 0 {
-			return nil, fmt.Errorf("override date column not found: %s", overrides.DateColumn)
-		}
-		dateColIdx = idx
-		if overrides.DateFormat != "" {
-			dateFormat = overrides.DateFormat
-		} else {
-			fmtStr, err := detectDateFormat(sampleRows, dateColIdx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to detect date format for override column: %w", err)
-			}
-			dateFormat = fmtStr
-		}
-	} else {
-		var err error
-		overrideFormat := ""
-		if overrides != nil {
-			overrideFormat = overrides.DateFormat
-		}
-		dateColIdx, dateFormat, err = detectDateColumn(header, sampleRows, overrideFormat)
-		if err != nil {
-			return nil, fmt.Errorf("failed to detect date column: %w", err)
-		}
-	}
-
-	// Resolve value columns
-	var valueColIndices []int
-	if overrides != nil && len(overrides.ValueColumns) > 0 {
-		for _, name := range overrides.ValueColumns {
-			idx := findColumnIndex(header, name)
-			if idx < 0 {
-				return nil, fmt.Errorf("override value column not found: %s", name)
-			}
-			valueColIndices = append(valueColIndices, idx)
-		}
-	} else {
-		valueColIndices = detectValueColumns(header, sampleRows, dateColIdx)
-		if len(valueColIndices) == 0 {
-			return nil, fmt.Errorf("no numeric value columns found in CSV")
-		}
-	}
-
-	// Resolve group columns
-	var groupColIndices []int
-	if overrides != nil && len(overrides.GroupColumns) > 0 {
-		for _, name := range overrides.GroupColumns {
-			idx := findColumnIndex(header, name)
-			if idx < 0 {
-				return nil, fmt.Errorf("override group column not found: %s", name)
-			}
-			// Exclude if it's date or a value column
-			if idx == dateColIdx || containsIndex(valueColIndices, idx) {
-				continue
-			}
-			groupColIndices = append(groupColIndices, idx)
-		}
-	} else {
-		groupColIndices = detectGroupColumns(header, sampleRows, dateColIdx, valueColIndices)
+	groupColIndices, err := resolveGroupColumns(header, sampleRows, dateColIdx, valueColIndices, overrides)
+	if err != nil {
+		return nil, err
 	}
 
 	dataDef := models.DataDefinition{
@@ -237,6 +165,28 @@ func BuildCheckInRequestWithOverrides(fileUUID, csvPath string, overrides *model
 		ConfigTsCreation:  tsConfig,
 		FileSpecification: fileSpec,
 	}, nil
+}
+
+func readCSVPreview(reader *csv.Reader, sampleSize int) ([]string, [][]string, error) {
+	header, err := reader.Read()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read CSV header: %w", err)
+	}
+
+	var sampleRows [][]string
+	for i := 0; i < sampleSize; i++ {
+		row, err := reader.Read()
+		if err != nil {
+			break
+		}
+		sampleRows = append(sampleRows, row)
+	}
+
+	if len(sampleRows) == 0 {
+		return nil, nil, fmt.Errorf("CSV file is empty (no data rows)")
+	}
+
+	return header, sampleRows, nil
 }
 
 // Analysis describes detected CSV structure.
@@ -310,6 +260,84 @@ func AnalyzeCSV(csvPath string) (*Analysis, error) {
 		ValueCols:  valueNames,
 		GroupCols:  groupNames,
 	}, nil
+}
+
+func resolveDateColumn(header []string, sampleRows [][]string, overrides *models.CheckInOverrides) (int, string, error) {
+	if overrides != nil && overrides.DateColumn != "" {
+		idx := findColumnIndex(header, overrides.DateColumn)
+		if idx < 0 {
+			return 0, "", fmt.Errorf("override date column not found: %s", overrides.DateColumn)
+		}
+		if overrides.DateFormat != "" {
+			return idx, overrides.DateFormat, nil
+		}
+		fmtStr, err := detectDateFormat(sampleRows, idx)
+		if err != nil {
+			return 0, "", fmt.Errorf("failed to detect date format for override column: %w", err)
+		}
+		return idx, fmtStr, nil
+	}
+
+	preferredFormat := ""
+	if overrides != nil {
+		preferredFormat = overrides.DateFormat
+	}
+
+	idx, detectedFormat, err := detectDateColumn(header, sampleRows, preferredFormat)
+	if err != nil {
+		return 0, "", fmt.Errorf("failed to detect date column: %w", err)
+	}
+	return idx, detectedFormat, nil
+}
+
+func resolveValueColumns(
+	header []string,
+	sampleRows [][]string,
+	dateColIdx int,
+	overrides *models.CheckInOverrides,
+) ([]int, error) {
+	if overrides != nil && len(overrides.ValueColumns) > 0 {
+		valueColIndices := make([]int, 0, len(overrides.ValueColumns))
+		for _, name := range overrides.ValueColumns {
+			idx := findColumnIndex(header, name)
+			if idx < 0 {
+				return nil, fmt.Errorf("override value column not found: %s", name)
+			}
+			valueColIndices = append(valueColIndices, idx)
+		}
+		return valueColIndices, nil
+	}
+
+	valueColIndices := detectValueColumns(header, sampleRows, dateColIdx)
+	if len(valueColIndices) == 0 {
+		return nil, fmt.Errorf("no numeric value columns found in CSV")
+	}
+	return valueColIndices, nil
+}
+
+func resolveGroupColumns(
+	header []string,
+	sampleRows [][]string,
+	dateColIdx int,
+	valueColIndices []int,
+	overrides *models.CheckInOverrides,
+) ([]int, error) {
+	if overrides != nil && len(overrides.GroupColumns) > 0 {
+		groupColIndices := make([]int, 0, len(overrides.GroupColumns))
+		for _, name := range overrides.GroupColumns {
+			idx := findColumnIndex(header, name)
+			if idx < 0 {
+				return nil, fmt.Errorf("override group column not found: %s", name)
+			}
+			if idx == dateColIdx || containsIndex(valueColIndices, idx) {
+				continue
+			}
+			groupColIndices = append(groupColIndices, idx)
+		}
+		return groupColIndices, nil
+	}
+
+	return detectGroupColumns(header, sampleRows, dateColIdx, valueColIndices), nil
 }
 
 func findColumnIndex(header []string, name string) int {

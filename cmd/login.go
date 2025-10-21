@@ -29,25 +29,9 @@ func LoginCmd(args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	if username != "" {
-		cfg.Username = username
-	}
-	if group != "" {
-		cfg.Group = group
-	}
-	if environment != "" {
-		cfg.Environment = environment
-	}
-
-	if cfg.Username == "" {
-		return fmt.Errorf("username is required (use --user flag or save in config)")
-	}
-	if cfg.Group == "" {
-		return fmt.Errorf("group is required (use --group flag or save in config)")
-	}
-
-	if cfg.Environment == "" {
-		cfg.Environment = "production"
+	applyFlagOverrides(cfg, username, group, environment)
+	if err := ensureLoginConfig(cfg); err != nil {
+		return err
 	}
 
 	env, err := config.GetEnvironment(cfg.Environment)
@@ -57,42 +41,11 @@ func LoginCmd(args []string) error {
 
 	authClient := client.NewAuthClient(env.GetAuthTokenURL(), nil)
 
-	if pwd := os.Getenv("FUTURE_PASSWORD"); pwd != "" {
-		otp := os.Getenv("FUTURE_OTP")
-		tokenResp, err := authClient.Authenticate(cfg.Username, pwd, otp)
-		if err != nil {
-			return fmt.Errorf("authentication failed: %w", err)
-		}
-		if err := applyTokensAndSave(cfgManager, cfg, tokenResp); err != nil {
-			return fmt.Errorf("failed to save config: %w", err)
-		}
-		printAuthSummary(os.Stdout, cfgManager, cfg)
-		return nil
+	if hasEnvPassword() {
+		return loginWithEnvCredentials(authClient, cfgManager, cfg)
 	}
 
-	fmt.Printf("\n%s\n", ui.TitleStyle.Render("futureEXPERT Login"))
-	fmt.Printf("  Username: %s\n", ui.HighlightStyle.Render(cfg.Username))
-	fmt.Printf("  Group: %s\n", ui.HighlightStyle.Render(cfg.Group))
-	fmt.Printf("  Environment: %s\n\n", ui.HighlightStyle.Render(cfg.Environment))
-
-	loginModel := ui.NewLoginModel(authClient, cfg.Username)
-	p := tea.NewProgram(loginModel)
-	finalModel, err := p.Run()
-	if err != nil {
-		return fmt.Errorf("login UI error: %w", err)
-	}
-
-	tokenResp, err := finalModel.(ui.LoginModel).Result()
-	if err != nil {
-		return fmt.Errorf("authentication failed: %w", err)
-	}
-
-	if err := applyTokensAndSave(cfgManager, cfg, tokenResp); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
-	}
-	printAuthSummary(os.Stdout, cfgManager, cfg)
-
-	return nil
+	return loginInteractively(authClient, cfgManager, cfg)
 }
 
 func parseLoginFlags(args []string) (username, group, environment string, err error) {
@@ -139,6 +92,86 @@ Config: ~/.config/swiftseer/config.yaml
 		return "", "", "", fmt.Errorf("failed to parse flags: %w", err)
 	}
 	return username, group, environment, nil
+}
+
+func applyFlagOverrides(cfg *config.Config, username, group, environment string) {
+	if username != "" {
+		cfg.Username = username
+	}
+	if group != "" {
+		cfg.Group = group
+	}
+	if environment != "" {
+		cfg.Environment = environment
+	}
+}
+
+func ensureLoginConfig(cfg *config.Config) error {
+	if cfg.Environment == "" {
+		cfg.Environment = "production"
+	}
+	if cfg.Username == "" {
+		return fmt.Errorf("username is required (use --user flag or save in config)")
+	}
+	if cfg.Group == "" {
+		return fmt.Errorf("group is required (use --group flag or save in config)")
+	}
+	return nil
+}
+
+func hasEnvPassword() bool {
+	return os.Getenv("FUTURE_PASSWORD") != ""
+}
+
+func loginWithEnvCredentials(
+	authClient *client.AuthClient,
+	cfgManager *config.Manager,
+	cfg *config.Config,
+) error {
+	pwd := os.Getenv("FUTURE_PASSWORD")
+	otp := os.Getenv("FUTURE_OTP")
+
+	tokenResp, err := authClient.Authenticate(cfg.Username, pwd, otp)
+	if err != nil {
+		return fmt.Errorf("authentication failed: %w", err)
+	}
+
+	if err := applyTokensAndSave(cfgManager, cfg, tokenResp); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	printAuthSummary(os.Stdout, cfgManager, cfg)
+	return nil
+}
+
+func loginInteractively(
+	authClient *client.AuthClient,
+	cfgManager *config.Manager,
+	cfg *config.Config,
+) error {
+	fmt.Printf("\n%s\n", ui.TitleStyle.Render("futureEXPERT Login"))
+	fmt.Printf("  Username: %s\n", ui.HighlightStyle.Render(cfg.Username))
+	fmt.Printf("  Group: %s\n", ui.HighlightStyle.Render(cfg.Group))
+	fmt.Printf("  Environment: %s\n\n", ui.HighlightStyle.Render(cfg.Environment))
+
+	loginModel := ui.NewLoginModel(authClient, cfg.Username)
+	p := tea.NewProgram(loginModel)
+	finalModel, err := p.Run()
+	if err != nil {
+		return fmt.Errorf("login UI error: %w", err)
+	}
+
+	tokenResp, err := finalModel.(ui.LoginModel).Result()
+	if err != nil {
+		return fmt.Errorf("authentication failed: %w", err)
+	}
+
+	if err := applyTokensAndSave(cfgManager, cfg, tokenResp); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	printAuthSummary(os.Stdout, cfgManager, cfg)
+	return nil
 }
 
 func applyTokensAndSave(cfgManager *config.Manager, cfg *config.Config, t *models.TokenResponse) error {
