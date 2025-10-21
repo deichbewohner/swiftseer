@@ -3,6 +3,7 @@ package cmd
 import (
 	"flag"
 	"fmt"
+	"os"
 )
 
 func CsvTemplateCmd(args []string) error {
@@ -16,6 +17,9 @@ Usage:
 `)
 	}
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			os.Exit(0)
+		}
 		return err
 	}
 	if *withGroups {
