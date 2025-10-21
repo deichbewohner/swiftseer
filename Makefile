@@ -20,10 +20,6 @@ LDFLAGS := -X github.com/deichbewohner/swiftseer/internal/version.Version=$(VERS
            -X github.com/deichbewohner/swiftseer/internal/version.GitCommit=$(COMMIT) \
            -X github.com/deichbewohner/swiftseer/internal/version.BuildDate=$(DATE)
 
-# Local caches to avoid writing to $HOME and to support sandboxed builds
-GOMODCACHE ?= $(CURDIR)/.gocache-mod
-GOCACHE ?= $(CURDIR)/.gocache
-
 # Enable race detector by default on non-Windows
 RACE ?=
 ifneq ($(GOOS),windows)
@@ -40,8 +36,7 @@ $(BIN_DIR):
 
 build: $(BIN_DIR)
 	@echo "Building $(OUT) version $(VERSION)..."
-	@GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) \
-	  GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO_ENABLED) \
+	GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO_ENABLED) \
 	  $(GO) build -ldflags "$(LDFLAGS)" -o $(OUT) .
 
 OSARCHES ?= linux/amd64 linux/arm64 windows/amd64 windows/arm64 darwin/arm64
@@ -51,25 +46,24 @@ build-all: $(BIN_DIR)
 	  ext=""; [ "$$target_os" = "windows" ] && ext=".exe"; \
 	  out="$(BIN_DIR)/$(BINARY_NAME)-$$target_os-$$target_arch$$ext"; \
 	  echo ">> Building $$out"; \
-	  GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) \
-	    GOOS=$$target_os GOARCH=$$target_arch CGO_ENABLED=$(CGO_ENABLED) \
+	  GOOS=$$target_os GOARCH=$$target_arch CGO_ENABLED=$(CGO_ENABLED) \
 	    $(GO) build -ldflags "$(LDFLAGS)" -o $$out .; \
 	done
 
 test:
 	@echo "Running tests..."
-	@GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) $(GO) test $(PKGS) $(TEST_FLAGS)
+	$(GO) test $(PKGS) $(TEST_FLAGS)
 
 cover:
 	@echo "Running tests with coverage..."
-	@GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) $(GO) test $(PKGS) -coverprofile=coverage.out
+	$(GO) test $(PKGS) -coverprofile=coverage.out
 	@$(GO) tool cover -func=coverage.out | tail -n 1
 
 tidy:
-	@GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) $(GO) mod tidy
+	$(GO) mod tidy
 
 run:
-	@GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) $(GO) run .
+	$(GO) run .
 
 fmt:
 	@$(GO) fmt ./...
@@ -110,4 +104,4 @@ lint:
 	$(GOLANGCI_LINT) run $(GOLANGCI_LINT_FLAGS)
 
 vet:
-	@GOMODCACHE=$(GOMODCACHE) GOCACHE=$(GOCACHE) $(GO) vet ./...
+	$(GO) vet ./...
