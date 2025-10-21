@@ -27,6 +27,12 @@ func main() {
 		err = cmd.StatusCmd(args)
 	case "forecast":
 		err = cmd.ForecastCmd(args)
+	case "csv-spec":
+		err = cmd.CsvSpecCmd(args)
+	case "csv-template":
+		err = cmd.CsvTemplateCmd(args)
+	case "inspect":
+		err = cmd.InspectCmd(args)
 	case "version", "--version", "-v":
 		fmt.Printf("swiftseer version %s\n", version.GetFullVersion())
 		return
@@ -54,6 +60,9 @@ Usage:
 Commands:
   login       Authenticate and save credentials
   forecast    Generate forecast from CSV file
+  csv-spec    Show CSV input specification
+  csv-template Print a minimal CSV template
+  inspect     Analyze a CSV and report detection
   status      Show configuration and token status
   logout      Clear saved credentials
   version     Show version information

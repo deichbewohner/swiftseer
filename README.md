@@ -48,3 +48,8 @@ client futureEXPERT](https://discovertomorrow.github.io/futureEXPERT/).
 - Resume: `swiftseer forecast --report-id <id>`
 
 Use `--no-ui`/`--json-events` for CI.
+
+## CSV help (in CLI)
+- CSV guide: `swiftseer csv-spec`
+- Validate CSV: `swiftseer inspect --json data.csv`
+- Template: `swiftseer csv-template` (or `--with-groups`)

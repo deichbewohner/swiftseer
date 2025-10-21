@@ -72,8 +72,34 @@ func (f *fakeAPI) DeleteReport(
 
 type stubBuilder struct{}
 
-func (stubBuilder) Build(fileUUID, csvPath string) (*models.CheckInRequest, error) {
+func (stubBuilder) Build(fileUUID, csvPath string, _ *models.CheckInOverrides) (*models.CheckInRequest, error) {
 	return &models.CheckInRequest{RawDataSource: fileUUID}, nil
+}
+
+type captureOverridesBuilder struct{ got *models.CheckInOverrides }
+
+func (c *captureOverridesBuilder) Build(fileUUID, csvPath string, o *models.CheckInOverrides) (*models.CheckInRequest, error) {
+	c.got = o
+	return &models.CheckInRequest{RawDataSource: fileUUID}, nil
+}
+
+func TestRunner_PassesOverridesToBuilder(t *testing.T) {
+	api := &fakeAPI{
+		uploadRes:   &UploadResult{UserInputID: "u1", FileID: "f1"},
+		versionID:   "v1",
+		reportID:    1,
+		statuses:    []*models.StatusResponse{{StatusSummary: models.StatusSummary{Created: 1, Computed: 1, Successful: 1}}},
+		resultsBody: []byte("{}"),
+	}
+	b := &captureOverridesBuilder{}
+	r := NewRunner(api, WithCheckInBuilder(b), WithClock(fastClock{now: time.Unix(0, 0)}))
+	overrides := &models.CheckInOverrides{DateColumn: "date", ValueColumns: []string{"units"}, GroupColumns: []string{"product"}}
+	if _, err := r.Run(context.Background(), RunParams{CSVPath: "f.csv", Horizon: 1, Confidence: 0.5, Title: "t", Overrides: overrides}); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	if b.got == nil || b.got.DateColumn != "date" || len(b.got.ValueColumns) != 1 || b.got.ValueColumns[0] != "units" {
+		t.Fatalf("overrides not passed correctly: %+v", b.got)
+	}
 }
 
 type fastClock struct{ now time.Time }

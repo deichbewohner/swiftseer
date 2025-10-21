@@ -56,3 +56,26 @@ func TestParseForecastFlags_ArgErrors(t *testing.T) {
 		t.Error("expected error for invalid confidence")
 	}
 }
+
+func TestParseForecastFlags_Overrides(t *testing.T) {
+	args := []string{
+		"--date-column", "date",
+		"--date-format", "%Y-%m-%d",
+		"--value-columns", "units,revenue",
+		"--group-columns", "product,customer",
+		"file.csv",
+	}
+	opts, err := parseForecastFlags(args)
+	if err != nil {
+		t.Fatalf("parseForecastFlags() err = %v", err)
+	}
+	if opts.DateColumn != "date" || opts.DateFormat != "%Y-%m-%d" {
+		t.Errorf("date overrides mismatch: %+v", *opts)
+	}
+	if len(opts.ValueCols) != 2 || opts.ValueCols[0] != "units" || opts.ValueCols[1] != "revenue" {
+		t.Errorf("value columns mismatch: %+v", *opts)
+	}
+	if len(opts.GroupCols) != 2 || opts.GroupCols[0] != "product" || opts.GroupCols[1] != "customer" {
+		t.Errorf("group columns mismatch: %+v", *opts)
+	}
+}

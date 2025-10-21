@@ -41,6 +41,7 @@ type RunParams struct {
 	Horizon    int
 	Confidence float64
 	Title      string
+	Overrides  *models.CheckInOverrides
 }
 
 type RunResult struct {
@@ -156,7 +157,7 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 		stageStart := r.clock.Now()
 		r.reporter.OnEvent(Event{At: r.clock.Now(), Stage: StageCheckIn, Kind: KindStart})
 
-		checkInReq, err := r.checkInBuilder.Build(fileID, params.CSVPath)
+		checkInReq, err := r.checkInBuilder.Build(fileID, params.CSVPath, params.Overrides)
 		if err != nil {
 			r.reporter.OnEvent(
 				Event{At: r.clock.Now(), Stage: StageCheckIn, Kind: KindError, Err: err},

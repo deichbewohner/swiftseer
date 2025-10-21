@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/deichbewohner/swiftseer/internal/models"
 )
 
 func TestDetectDelimiter(t *testing.T) {
@@ -298,5 +300,120 @@ func TestBuildCheckInRequest(t *testing.T) {
 
 	if req.FileSpecification.Delimiter != "," {
 		t.Errorf("FileSpecification.Delimiter = %q, want %q", req.FileSpecification.Delimiter, ",")
+	}
+}
+
+func TestBuildCheckInRequestWithOverrides_DateAndFormat(t *testing.T) {
+	csvContent := `OrderDate,units
+2020/11/01,10
+2020/12/01,20
+`
+	tmpDir := t.TempDir()
+	csvFile := filepath.Join(tmpDir, "test.csv")
+	if err := os.WriteFile(csvFile, []byte(csvContent), 0644); err != nil {
+		t.Fatalf("failed to create test CSV: %v", err)
+	}
+
+	req, err := BuildCheckInRequestWithOverrides("uuid-1", csvFile, &models.CheckInOverrides{DateColumn: "OrderDate", DateFormat: "%Y/%m/%d"})
+	if err != nil {
+		t.Fatalf("BuildCheckInRequestWithOverrides() error = %v", err)
+	}
+	if req.DataDefinition.DateColumns.Name != "OrderDate" {
+		t.Errorf("DateColumns.Name = %q, want %q", req.DataDefinition.DateColumns.Name, "OrderDate")
+	}
+	if req.DataDefinition.DateColumns.Format != "%Y/%m/%d" {
+		t.Errorf("DateColumns.Format = %q, want %q", req.DataDefinition.DateColumns.Format, "%Y/%m/%d")
+	}
+}
+
+func TestBuildCheckInRequestWithOverrides_DateFormatOnly(t *testing.T) {
+	csvContent := `OrderDate,units
+01.11.2020,10
+01.12.2020,20
+`
+	tmpDir := t.TempDir()
+	csvFile := filepath.Join(tmpDir, "test.csv")
+	if err := os.WriteFile(csvFile, []byte(csvContent), 0644); err != nil {
+		t.Fatalf("failed to create test CSV: %v", err)
+	}
+
+	req, err := BuildCheckInRequestWithOverrides("uuid-override", csvFile, &models.CheckInOverrides{
+		DateFormat: "%d.%m.%Y",
+	})
+	if err != nil {
+		t.Fatalf("BuildCheckInRequestWithOverrides() error = %v", err)
+	}
+
+	if req.DataDefinition.DateColumns.Name != "OrderDate" {
+		t.Errorf("DateColumns.Name = %q, want %q", req.DataDefinition.DateColumns.Name, "OrderDate")
+	}
+	if req.DataDefinition.DateColumns.Format != "%d.%m.%Y" {
+		t.Errorf("DateColumns.Format = %q, want %q", req.DataDefinition.DateColumns.Format, "%d.%m.%Y")
+	}
+}
+
+func TestBuildCheckInRequestWithOverrides_ValueAndGroup(t *testing.T) {
+	csvContent := `date,product,customer,units,revenue
+2020-11-01,Liquid Soap,REWE Group,10,150.5
+2020-12-01,Liquid Soap,REWE Group,20,300.0
+`
+	tmpDir := t.TempDir()
+	csvFile := filepath.Join(tmpDir, "test.csv")
+	if err := os.WriteFile(csvFile, []byte(csvContent), 0644); err != nil {
+		t.Fatalf("failed to create test CSV: %v", err)
+	}
+
+	req, err := BuildCheckInRequestWithOverrides("uuid-2", csvFile, &models.CheckInOverrides{
+		ValueColumns: []string{"revenue"},
+		GroupColumns: []string{"product"},
+	})
+	if err != nil {
+		t.Fatalf("BuildCheckInRequestWithOverrides() error = %v", err)
+	}
+	if len(req.DataDefinition.ValueColumns) != 1 || req.DataDefinition.ValueColumns[0].Name != "revenue" {
+		t.Errorf("ValueColumns = %+v, want [revenue]", req.DataDefinition.ValueColumns)
+	}
+	if len(req.DataDefinition.GroupColumns) != 1 || req.DataDefinition.GroupColumns[0].Name != "product" {
+		t.Errorf("GroupColumns = %+v, want [product]", req.DataDefinition.GroupColumns)
+	}
+}
+
+func TestBuildCheckInRequestWithOverrides_InvalidColumn(t *testing.T) {
+	csvContent := `date,units
+2020-11-01,10
+`
+	tmpDir := t.TempDir()
+	csvFile := filepath.Join(tmpDir, "test.csv")
+	if err := os.WriteFile(csvFile, []byte(csvContent), 0644); err != nil {
+		t.Fatalf("failed to create test CSV: %v", err)
+	}
+	_, err := BuildCheckInRequestWithOverrides("uuid-3", csvFile, &models.CheckInOverrides{DateColumn: "nonexistent"})
+	if err == nil {
+		t.Fatalf("expected error for invalid override column")
+	}
+}
+
+func TestAnalyzeCSV(t *testing.T) {
+	csvContent := `date,product,units
+2020-11-01,A,10
+2020-12-01,A,20
+`
+	tmpDir := t.TempDir()
+	csvFile := filepath.Join(tmpDir, "test.csv")
+	if err := os.WriteFile(csvFile, []byte(csvContent), 0644); err != nil {
+		t.Fatalf("failed to create test CSV: %v", err)
+	}
+	r, err := AnalyzeCSV(csvFile)
+	if err != nil {
+		t.Fatalf("AnalyzeCSV() error = %v", err)
+	}
+	if r.DateColumn != "date" || r.DateFormat != "%Y-%m-%d" {
+		t.Errorf("unexpected date detection: %v %v", r.DateColumn, r.DateFormat)
+	}
+	if len(r.ValueCols) != 1 || r.ValueCols[0] != "units" {
+		t.Errorf("unexpected value columns: %v", r.ValueCols)
+	}
+	if len(r.GroupCols) != 1 || r.GroupCols[0] != "product" {
+		t.Errorf("unexpected group columns: %v", r.GroupCols)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
 type forecastOptions struct {
@@ -17,6 +18,10 @@ type forecastOptions struct {
 	NoUI       bool
 	JSONEvents bool
 	CSVPath    string
+	DateColumn string
+	DateFormat string
+	ValueCols  []string
+	GroupCols  []string
 }
 
 func parseForecastFlags(args []string) (*forecastOptions, error) {
@@ -38,6 +43,11 @@ Flags:
   --clean         Delete upload and report after completion
   --no-ui         Force non-interactive mode (no TUI)
   --json-events   Emit workflow events as NDJSON on stdout
+
+CSV help:
+  swiftseer csv-spec        # CSV guide
+  swiftseer inspect file.csv # Analyze detection
+  swiftseer csv-template    # Print a minimal template
 
 Examples:
   # Basic forecast
@@ -63,6 +73,10 @@ Examples:
 		clean      bool
 		noUI       bool
 		jsonEvents bool
+		dateColumn string
+		dateFormat string
+		valueCols  string
+		groupCols  string
 	)
 	fs.IntVar(&horizon, "horizon", 12, "Forecast horizon in periods")
 	fs.Float64Var(&confidence, "confidence", 0.75, "Confidence level (0.0-1.0)")
@@ -75,6 +89,10 @@ Examples:
 	fs.BoolVar(&clean, "clean", false, "Delete upload and report after completion")
 	fs.BoolVar(&noUI, "no-ui", false, "Force non-interactive mode (no TUI)")
 	fs.BoolVar(&jsonEvents, "json-events", false, "Emit workflow events as NDJSON on stdout")
+	fs.StringVar(&dateColumn, "date-column", "", "Override date column name")
+	fs.StringVar(&dateFormat, "date-format", "", "Override date format (e.g. %Y-%m-%d)")
+	fs.StringVar(&valueCols, "value-columns", "", "Comma-separated value column names")
+	fs.StringVar(&groupCols, "group-columns", "", "Comma-separated group column names")
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -102,6 +120,25 @@ Examples:
 		}
 	}
 
+	// Parse lists
+	var valueList, groupList []string
+	if valueCols != "" {
+		for _, s := range strings.Split(valueCols, ",") {
+			v := strings.TrimSpace(s)
+			if v != "" {
+				valueList = append(valueList, v)
+			}
+		}
+	}
+	if groupCols != "" {
+		for _, s := range strings.Split(groupCols, ",") {
+			v := strings.TrimSpace(s)
+			if v != "" {
+				groupList = append(groupList, v)
+			}
+		}
+	}
+
 	return &forecastOptions{
 		Horizon:    horizon,
 		Confidence: confidence,
@@ -113,5 +150,9 @@ Examples:
 		NoUI:       noUI,
 		JSONEvents: jsonEvents,
 		CSVPath:    csvPath,
+		DateColumn: dateColumn,
+		DateFormat: dateFormat,
+		ValueCols:  valueList,
+		GroupCols:  groupList,
 	}, nil
 }

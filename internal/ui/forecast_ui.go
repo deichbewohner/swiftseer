@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/deichbewohner/swiftseer/internal/models"
 	"github.com/deichbewohner/swiftseer/internal/version"
 	"github.com/deichbewohner/swiftseer/internal/workflow"
 )
@@ -67,6 +68,7 @@ type ForecastParams struct {
 	Verbose        bool
 	TokenExpiresAt time.Time
 	Clean          bool
+	Overrides      *models.CheckInOverrides
 }
 
 func NewForecastModel(
@@ -109,6 +111,7 @@ func NewForecastModel(
 			Horizon:    params.Horizon,
 			Confidence: params.Confidence,
 			Title:      params.Title,
+			Overrides:  params.Overrides,
 		},
 		output:         params.Output,
 		verbose:        params.Verbose,

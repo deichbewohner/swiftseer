@@ -1,0 +1,13 @@
+{
+  "delimiter": ",",
+  "decimal": ".",
+  "encoding": "utf-8",
+  "date_column": "date",
+  "date_format": "%Y-%m-%d",
+  "value_columns": [
+    "units"
+  ],
+  "group_columns": [
+    "product"
+  ]
+}

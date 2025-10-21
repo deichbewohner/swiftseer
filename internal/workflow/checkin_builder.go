@@ -6,13 +6,13 @@ import (
 )
 
 type CheckInRequestBuilder interface {
-	Build(fileUUID, csvPath string) (*models.CheckInRequest, error)
+	Build(fileUUID, csvPath string, overrides *models.CheckInOverrides) (*models.CheckInRequest, error)
 }
 
 type defaultCheckInRequestBuilder struct{}
 
 func (defaultCheckInRequestBuilder) Build(
-	fileUUID, csvPath string,
+	fileUUID, csvPath string, overrides *models.CheckInOverrides,
 ) (*models.CheckInRequest, error) {
-	return client.BuildCheckInRequest(fileUUID, csvPath)
+	return client.BuildCheckInRequestWithOverrides(fileUUID, csvPath, overrides)
 }

@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/deichbewohner/swiftseer/internal/client"
 	"github.com/deichbewohner/swiftseer/internal/config"
+	"github.com/deichbewohner/swiftseer/internal/models"
 	"github.com/deichbewohner/swiftseer/internal/ui"
 	"github.com/deichbewohner/swiftseer/internal/workflow"
 	"golang.org/x/term"
@@ -66,15 +67,16 @@ func ForecastCmd(args []string) error {
 		term.IsTerminal(int(os.Stdout.Fd())),
 	)
 
+	overrides := buildOverrides(opts)
 	if useTUI {
-		return runTUIForecast(ctx, cfg, apiClient, csvPath, horizon, confidence, title, output, verbose, clean)
+		return runTUIForecast(ctx, cfg, apiClient, csvPath, horizon, confidence, title, output, verbose, clean, overrides)
 	}
 
 	if reportID > 0 {
 		return resumeForecast(ctx, apiClient, reportID, clean, jsonEvents, verbose, output)
 	}
 
-	return runHeadlessForecast(ctx, apiClient, csvPath, horizon, confidence, title, clean, jsonEvents, verbose, output)
+	return runHeadlessForecast(ctx, apiClient, csvPath, horizon, confidence, title, clean, jsonEvents, verbose, output, overrides)
 }
 
 func newWorkflowRunner(
@@ -145,6 +147,7 @@ func runTUIForecast(
 	output string,
 	verbose bool,
 	clean bool,
+	overrides *models.CheckInOverrides,
 ) error {
 	params := ui.ForecastParams{
 		CSVPath:        csvPath,
@@ -155,6 +158,7 @@ func runTUIForecast(
 		Verbose:        verbose,
 		TokenExpiresAt: cfg.TokenExpiresAt,
 		Clean:          clean,
+		Overrides:      overrides,
 	}
 	api := workflow.NewClientAdapter(apiClient)
 	_ = apiClient.EnsureValidToken(ctx)
@@ -227,10 +231,11 @@ func runHeadlessForecast(
 	jsonEvents bool,
 	verbose bool,
 	output string,
+	overrides *models.CheckInOverrides,
 ) error {
 	cleanPolicy := cleanPolicyOf(clean)
 	runner, _ := newWorkflowRunner(apiClient, cleanPolicy, jsonEvents, verbose)
-	result, err := runner.Run(ctx, workflow.RunParams{CSVPath: csvPath, Horizon: horizon, Confidence: confidence, Title: title})
+	result, err := runner.Run(ctx, workflow.RunParams{CSVPath: csvPath, Horizon: horizon, Confidence: confidence, Title: title, Overrides: overrides})
 	if err != nil {
 		return fmt.Errorf("forecast workflow failed: %w", err)
 	}
@@ -238,4 +243,32 @@ func runHeadlessForecast(
 		return fmt.Errorf("failed to write results to file: %w", err)
 	}
 	return nil
+}
+
+func buildOverrides(opts *forecastOptions) *models.CheckInOverrides {
+	if opts == nil {
+		return nil
+	}
+	has := false
+	o := &models.CheckInOverrides{}
+	if opts.DateColumn != "" {
+		o.DateColumn = opts.DateColumn
+		has = true
+	}
+	if opts.DateFormat != "" {
+		o.DateFormat = opts.DateFormat
+		has = true
+	}
+	if len(opts.ValueCols) > 0 {
+		o.ValueColumns = opts.ValueCols
+		has = true
+	}
+	if len(opts.GroupCols) > 0 {
+		o.GroupColumns = opts.GroupCols
+		has = true
+	}
+	if !has {
+		return nil
+	}
+	return o
 }
