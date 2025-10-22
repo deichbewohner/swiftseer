@@ -17,7 +17,7 @@
 A tiny Go CLI to run plain batch forecasts on the future platform from a CSV:
 upload -> check‑in -> start forecast -> poll -> save results.
 
-> Unofficial tool. Not endorsed by future/futureEXPERT.
+> Unofficial tool. Not endorsed by future/futureEXPERT/prognostica.
 
 ## Why
 
@@ -38,7 +38,7 @@ Could this be done with a simple script? Yes, but this is more fun.
 
 For advanced workflows (covariates, analytics, pandas exports, plotting, rich
 configs), use the [official Python
-client futureEXPERT](https://discovertomorrow.github.io/futureEXPERT/).
+client futureEXPERT](https://github.com/discovertomorrow/futureEXPERT).
 
 ## Quick start
 - Build: `make build` (Go 1.25+). Binary: `bin/swiftseer`
