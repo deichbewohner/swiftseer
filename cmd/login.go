@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/deichbewohner/swiftseer/internal/client"
@@ -42,10 +45,10 @@ func LoginCmd(args []string) error {
 	authClient := client.NewAuthClient(env.GetAuthTokenURL(), nil)
 
 	if hasEnvPassword() {
-		return loginWithEnvCredentials(authClient, cfgManager, cfg)
+		return loginWithEnvCredentials(authClient, cfgManager, cfg, env)
 	}
 
-	return loginInteractively(authClient, cfgManager, cfg)
+	return loginInteractively(authClient, cfgManager, cfg, env)
 }
 
 func parseLoginFlags(args []string) (username, group, environment string, err error) {
@@ -113,9 +116,6 @@ func ensureLoginConfig(cfg *config.Config) error {
 	if cfg.Username == "" {
 		return fmt.Errorf("username is required (use --user flag or save in config)")
 	}
-	if cfg.Group == "" {
-		return fmt.Errorf("group is required (use --group flag or save in config)")
-	}
 	return nil
 }
 
@@ -127,6 +127,7 @@ func loginWithEnvCredentials(
 	authClient *client.AuthClient,
 	cfgManager *config.Manager,
 	cfg *config.Config,
+	env config.Environment,
 ) error {
 	pwd := os.Getenv("FUTURE_PASSWORD")
 	otp := os.Getenv("FUTURE_OTP")
@@ -136,7 +137,13 @@ func loginWithEnvCredentials(
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 
-	if err := applyTokensAndSave(cfgManager, cfg, tokenResp); err != nil {
+	applyTokens(cfg, tokenResp)
+
+	if err := ensureGroupConfigured(env, cfg); err != nil {
+		return err
+	}
+
+	if err := cfgManager.Save(cfg); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -148,10 +155,17 @@ func loginInteractively(
 	authClient *client.AuthClient,
 	cfgManager *config.Manager,
 	cfg *config.Config,
+	env config.Environment,
 ) error {
 	fmt.Printf("\n%s\n", ui.TitleStyle.Render("futureEXPERT Login"))
 	fmt.Printf("  Username: %s\n", ui.HighlightStyle.Render(cfg.Username))
-	fmt.Printf("  Group: %s\n", ui.HighlightStyle.Render(cfg.Group))
+	groupLabel := cfg.Group
+	groupStyle := ui.HighlightStyle
+	if groupLabel == "" {
+		groupLabel = "(not set)"
+		groupStyle = ui.InfoStyle
+	}
+	fmt.Printf("  Group: %s\n", groupStyle.Render(groupLabel))
 	fmt.Printf("  Environment: %s\n\n", ui.HighlightStyle.Render(cfg.Environment))
 
 	loginModel := ui.NewLoginModel(authClient, cfg.Username)
@@ -166,7 +180,13 @@ func loginInteractively(
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 
-	if err := applyTokensAndSave(cfgManager, cfg, tokenResp); err != nil {
+	applyTokens(cfg, tokenResp)
+
+	if err := ensureGroupConfigured(env, cfg); err != nil {
+		return err
+	}
+
+	if err := cfgManager.Save(cfg); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -174,17 +194,53 @@ func loginInteractively(
 	return nil
 }
 
-func applyTokensAndSave(cfgManager *config.Manager, cfg *config.Config, t *models.TokenResponse) error {
+func applyTokens(cfg *config.Config, t *models.TokenResponse) {
 	cfg.UpdateToken(t.AccessToken, t.RefreshToken, t.ExpiresIn, t.RefreshExpiresIn)
-	return cfgManager.Save(cfg)
 }
 
 func printAuthSummary(w io.Writer, cfgManager *config.Manager, cfg *config.Config) {
+	groupLabel := cfg.Group
+	groupStyle := ui.HighlightStyle
+	if groupLabel == "" {
+		groupLabel = "(not set)"
+		groupStyle = ui.InfoStyle
+	}
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintf(w, "%s Authentication successful!\n", ui.SuccessStyle.Render("✓"))
 	_, _ = fmt.Fprintf(w, "  User: %s\n", cfg.Username)
-	_, _ = fmt.Fprintf(w, "  Group: %s\n", cfg.Group)
+	_, _ = fmt.Fprintf(w, "  Group: %s\n", groupStyle.Render(groupLabel))
 	_, _ = fmt.Fprintf(w, "  Environment: %s\n", cfg.Environment)
 	_, _ = fmt.Fprintf(w, "  Refresh token expires: %s\n", cfg.RefreshExpiresAt.Format("2006-01-02 15:04:05"))
 	_, _ = fmt.Fprintf(w, "\n%s %s\n\n", ui.InfoStyle.Render("Configuration saved to:"), cfgManager.GetConfigPath())
+}
+
+func ensureGroupConfigured(env config.Environment, cfg *config.Config) error {
+	if cfg.Group != "" {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	resp, err := client.FetchGroups(ctx, env.APIURL, cfg.AccessToken, nil)
+	if err != nil {
+		return fmt.Errorf("failed to fetch groups: %w", err)
+	}
+
+	switch len(resp.Groups) {
+	case 0:
+		return fmt.Errorf("no groups available for user %s. Use --group to specify one", cfg.Username)
+	case 1:
+		cfg.Group = resp.Groups[0].ID
+		return nil
+	default:
+		groupIDs := make([]string, len(resp.Groups))
+		for i, g := range resp.Groups {
+			groupIDs[i] = g.ID
+		}
+		return fmt.Errorf(
+			"multiple groups available (%s). Re-run login with --group to choose one",
+			strings.Join(groupIDs, ", "),
+		)
+	}
 }

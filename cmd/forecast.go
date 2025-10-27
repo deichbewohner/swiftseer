@@ -42,6 +42,12 @@ func ForecastCmd(args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	if cfg.Group == "" {
+		return fmt.Errorf(
+			"no group configured. Please run:\n  swiftseer login --group <group>",
+		)
+	}
+
 	if cfg.RefreshToken == "" || !cfg.IsRefreshTokenValid() {
 		return fmt.Errorf(
 			"not authenticated or refresh token expired. Please run:\n  swiftseer login",
