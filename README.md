@@ -47,6 +47,8 @@ client futureEXPERT](https://github.com/discovertomorrow/futureEXPERT).
   `--output`)
 - Resume: `swiftseer forecast --report-id <id>`
 
+Results are saved as the raw Future API JSON without modification.
+
 Use `--no-ui`/`--json-events` for CI.
 
 ## CSV help (in CLI)
