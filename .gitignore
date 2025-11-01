@@ -36,3 +36,5 @@ go.work.sum
 /CLAUDE.md
 
 /bin/
+
+/forecast-results.json
