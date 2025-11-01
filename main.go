@@ -27,6 +27,8 @@ func main() {
 		err = cmd.StatusCmd(args)
 	case "forecast":
 		err = cmd.ForecastCmd(args)
+	case "results":
+		err = cmd.ResultsCmd(args)
 	case "csv-spec":
 		err = cmd.CsvSpecCmd(args)
 	case "csv-template":
@@ -60,6 +62,7 @@ Usage:
 Commands:
   login       Authenticate and save credentials
   forecast    Generate forecast from CSV file
+  results     View saved forecast results in TUI
   csv-spec    Show CSV input specification
   csv-template Print a minimal CSV template
   inspect     Analyze a CSV and report detection
@@ -73,6 +76,7 @@ Examples:
   swiftseer login --user Analyst1 --group group-expert
   swiftseer forecast data.csv
   swiftseer forecast --horizon 18 --confidence 0.8 data.csv
+  swiftseer results --file forecast-results.json
   swiftseer status
 
 Config: ~/.config/swiftseer/config.yaml

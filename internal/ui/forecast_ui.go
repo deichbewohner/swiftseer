@@ -2,9 +2,12 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -20,6 +23,77 @@ var forecastBoxStyle = lipgloss.NewStyle().
 	BorderForeground(lipgloss.Color("240")).
 	Padding(0, 1).
 	Width(50)
+
+var resultPlotPlaceholder = buildResultPlaceholder()
+
+type seriesPoint struct {
+	Timestamp string
+	Value     float64
+}
+
+type forecastModelInfo struct {
+	Name         string
+	Status       string
+	Plausibility string
+	RankPosition int
+	RankScore    float64
+}
+
+type forecastResultEntry struct {
+	Name        string
+	Granularity string
+	Actuals     []seriesPoint
+	Forecasts   []seriesPoint
+	Model       forecastModelInfo
+}
+
+func buildResultPlaceholder() string {
+	const (
+		contentWidth = 48
+		height       = 8
+	)
+	innerWidth := contentWidth - 2
+	pivot := innerWidth / 2
+	heights := make([]int, innerWidth)
+	for col := 0; col < innerWidth; col++ {
+		var h float64
+		if col < pivot {
+			denom := float64(maxInt(1, pivot-1))
+			ratio := float64(col) / denom
+			h = 2 + 3*math.Sin(ratio*math.Pi)
+		} else {
+			denom := float64(maxInt(1, innerWidth-pivot-1))
+			ratio := float64(col-pivot) / denom
+			h = 3 + 4*ratio
+		}
+		heights[col] = clampInt(int(math.Round(h)), 0, height-1)
+	}
+	var b strings.Builder
+	b.WriteString("┌" + strings.Repeat("─", innerWidth) + "┐\n")
+	for row := 0; row < height; row++ {
+		b.WriteString("│")
+		level := height - row - 1
+		for col := 0; col < innerWidth; col++ {
+			if col == pivot {
+				b.WriteRune('│')
+				continue
+			}
+			h := heights[col]
+			if h >= level {
+				if col < pivot {
+					b.WriteRune('█')
+				} else {
+					b.WriteRune('░')
+				}
+			} else {
+				b.WriteRune(' ')
+			}
+		}
+		b.WriteString("│\n")
+	}
+	b.WriteString("└" + strings.Repeat("─", innerWidth) + "┘")
+	return b.String()
+}
 
 type StageStatus struct {
 	Name      string
@@ -55,6 +129,8 @@ type ForecastModel struct {
 	quitting bool
 	err      error
 	result   *workflow.RunResult
+	results  []forecastResultEntry
+	index    int
 
 	job *workflow.Job
 }
@@ -124,7 +200,19 @@ func NewForecastModel(
 	}
 }
 
+func NewForecastResultsViewer(ctx context.Context, results []byte) (*ForecastModel, error) {
+	m := NewForecastModel(ctx, nil, ForecastParams{})
+	if err := m.loadResults(results); err != nil {
+		return nil, err
+	}
+	m.result = &workflow.RunResult{Results: results}
+	return m, nil
+}
+
 func (m *ForecastModel) Init() tea.Cmd {
+	if m.showingResults() {
+		return nil
+	}
 	return tea.Batch(
 		m.spinner.Tick,
 		m.startWorkflow(),
@@ -209,14 +297,40 @@ func (m *ForecastModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *ForecastModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if msg.Type == tea.KeyCtrlC {
-		if m.job != nil {
-			m.job.Cancel()
+	switch msg.Type {
+	case tea.KeyCtrlC:
+		if !m.done {
+			if m.job != nil {
+				m.job.Cancel()
+			}
+			m.err = fmt.Errorf("cancelled by user")
 		}
 		m.done = true
 		m.quitting = true
-		m.err = fmt.Errorf("cancelled by user")
 		return m, tea.Quit
+	case tea.KeyLeft:
+		if m.canNavigateResults() {
+			m.moveSelection(-1)
+		}
+		return m, nil
+	case tea.KeyRight:
+		if m.canNavigateResults() {
+			m.moveSelection(1)
+		}
+		return m, nil
+	case tea.KeyRunes:
+		if len(msg.Runes) == 1 {
+			switch msg.Runes[0] {
+			case 'q', 'Q':
+				if !m.done && m.job != nil {
+					m.job.Cancel()
+					m.err = fmt.Errorf("cancelled by user")
+				}
+				m.done = true
+				m.quitting = true
+				return m, tea.Quit
+			}
+		}
 	}
 	return m, nil
 }
@@ -233,7 +347,10 @@ func (m *ForecastModel) handleWorkflowEvent(e workflow.Event) (tea.Model, tea.Cm
 }
 
 func (m *ForecastModel) handleEventsClosed() (tea.Model, tea.Cmd) {
-	if m.result != nil {
+	if m.result != nil && m.err == nil {
+		return m, nil
+	}
+	if m.err != nil {
 		m.done = true
 		m.quitting = true
 		return m, tea.Quit
@@ -243,6 +360,12 @@ func (m *ForecastModel) handleEventsClosed() (tea.Model, tea.Cmd) {
 
 func (m *ForecastModel) handleWorkflowComplete(res *workflow.RunResult) (tea.Model, tea.Cmd) {
 	m.result = res
+	if err := m.loadResults(res.Results); err != nil {
+		m.err = fmt.Errorf("failed to read forecast results: %w", err)
+		m.done = true
+		m.quitting = true
+		return m, tea.Quit
+	}
 	return m, nil
 }
 
@@ -319,17 +442,19 @@ func (m *ForecastModel) updateReportID(e workflow.Event) {
 
 func (m *ForecastModel) View() string {
 	var content string
-	content += m.renderHeader()
-
-	for _, stage := range m.stagesToRender() {
-		status := m.stages[stage]
-		if status == nil {
-			continue
+	if m.showingResults() {
+		content = m.renderResultView()
+	} else {
+		content += m.renderHeader()
+		for _, stage := range m.stagesToRender() {
+			status := m.stages[stage]
+			if status == nil {
+				continue
+			}
+			content += m.renderStage(stage, status)
 		}
-		content += m.renderStage(stage, status)
+		content += m.renderProgress()
 	}
-
-	content += m.renderProgress()
 
 	view := forecastBoxStyle.Render(content)
 	if m.quitting {
@@ -430,6 +555,255 @@ func (m *ForecastModel) renderProgress() string {
 	}
 	b.WriteString(statsStyle.Render(fmt.Sprintf("Report: %d", m.reportID)))
 	return b.String()
+}
+
+func (m *ForecastModel) showingResults() bool {
+	return m.done && m.err == nil && len(m.results) > 0
+}
+
+func (m *ForecastModel) canNavigateResults() bool {
+	return m.showingResults() && len(m.results) > 1
+}
+
+func (m *ForecastModel) moveSelection(delta int) {
+	if len(m.results) == 0 {
+		return
+	}
+	count := len(m.results)
+	m.index = (m.index + delta) % count
+	if m.index < 0 {
+		m.index += count
+	}
+}
+
+func (m *ForecastModel) currentResult() *forecastResultEntry {
+	if len(m.results) == 0 {
+		return nil
+	}
+	if m.index < 0 || m.index >= len(m.results) {
+		return &m.results[0]
+	}
+	return &m.results[m.index]
+}
+
+func (m *ForecastModel) renderResultView() string {
+	var b strings.Builder
+	b.WriteString(m.renderHeader())
+	if len(m.results) == 0 {
+		b.WriteString("No forecast results available\n")
+		return b.String()
+	}
+	entry := m.results[m.index]
+	b.WriteString(fmt.Sprintf("Forecast %d/%d\n", m.index+1, len(m.results)))
+	if entry.Name != "" {
+		b.WriteString(fmt.Sprintf("Series: %s\n", truncate(entry.Name, 40)))
+	}
+	b.WriteString("\n")
+	b.WriteString(resultPlotPlaceholder)
+	b.WriteString("\n\n")
+	b.WriteString(fmt.Sprintf("Model: %s\n", truncate(entry.Model.Name, 40)))
+	meta := buildModelMeta(entry)
+	if meta != "" {
+		b.WriteString(truncate(meta, 48))
+		b.WriteString("\n")
+	}
+	if len(entry.Forecasts) > 0 {
+		next := entry.Forecasts[0]
+		b.WriteString(fmt.Sprintf("Next: %s  %s\n", formatTimestamp(next.Timestamp), formatValue(next.Value)))
+	}
+	if len(entry.Actuals) > 0 {
+		last := entry.Actuals[len(entry.Actuals)-1]
+		b.WriteString(fmt.Sprintf("Last actual: %s  %s\n", formatTimestamp(last.Timestamp), formatValue(last.Value)))
+	}
+	b.WriteString("\n← Prev    → Next    q Quit\n")
+	return b.String()
+}
+
+func buildModelMeta(entry forecastResultEntry) string {
+	var parts []string
+	if entry.Model.Status != "" {
+		parts = append(parts, entry.Model.Status)
+	}
+	if entry.Model.Plausibility != "" {
+		parts = append(parts, entry.Model.Plausibility)
+	}
+	if entry.Model.RankPosition > 0 {
+		parts = append(parts, fmt.Sprintf("Rank #%d", entry.Model.RankPosition))
+	}
+	if entry.Model.RankScore != 0 {
+		parts = append(parts, fmt.Sprintf("Score %.2f", entry.Model.RankScore))
+	}
+	if len(entry.Forecasts) > 0 {
+		parts = append(parts, fmt.Sprintf("Horizon %d", len(entry.Forecasts)))
+	}
+	return strings.Join(parts, "  ")
+}
+
+func truncate(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(s) <= max {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	if max == 1 {
+		return string(runes[:1])
+	}
+	return string(runes[:max-1]) + "…"
+}
+
+func formatTimestamp(value string) string {
+	if len(value) >= 10 {
+		return value[:10]
+	}
+	return value
+}
+
+func formatValue(v float64) string {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return "-"
+	}
+	rounded := math.Round(v)
+	if math.Abs(v-rounded) < 0.0001 {
+		return addThousands(fmt.Sprintf("%.0f", rounded))
+	}
+	return fmt.Sprintf("%.2f", v)
+}
+
+func addThousands(s string) string {
+	if s == "" {
+		return s
+	}
+	sign := ""
+	if s[0] == '-' {
+		sign = "-"
+		s = s[1:]
+	}
+	if len(s) <= 3 {
+		return sign + s
+	}
+	rem := len(s) % 3
+	if rem == 0 {
+		rem = 3
+	}
+	var b strings.Builder
+	b.WriteString(sign)
+	b.WriteString(s[:rem])
+	for i := rem; i < len(s); i += 3 {
+		b.WriteByte(',')
+		b.WriteString(s[i : i+3])
+	}
+	return b.String()
+}
+
+func (m *ForecastModel) loadResults(data []byte) error {
+	entries, err := parseForecastResults(data)
+	if err != nil {
+		return err
+	}
+	m.results = entries
+	if m.index < 0 || m.index >= len(m.results) {
+		m.index = 0
+	}
+	m.done = true
+	m.quitting = false
+	m.err = nil
+	return nil
+}
+
+func clampInt(v, min, max int) int {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func parseForecastResults(data []byte) ([]forecastResultEntry, error) {
+	type rawActual struct {
+		Timestamp string  `json:"time_stamp_utc"`
+		Value     float64 `json:"value"`
+	}
+	type rawForecast struct {
+		Timestamp string  `json:"time_stamp_utc"`
+		Point     float64 `json:"point_forecast_value"`
+	}
+	type rawRanking struct {
+		RankPosition int     `json:"rank_position"`
+		Score        float64 `json:"score"`
+	}
+	type rawModelSelection struct {
+		Ranking *rawRanking `json:"ranking"`
+	}
+	type rawModel struct {
+		ModelName            string             `json:"model_name"`
+		Status               string             `json:"status"`
+		ForecastPlausibility string             `json:"forecast_plausibility"`
+		Forecasts            []rawForecast      `json:"forecasts"`
+		ModelSelection       *rawModelSelection `json:"model_selection"`
+	}
+	type rawActuals struct {
+		Name        string      `json:"name"`
+		Granularity string      `json:"granularity"`
+		Values      []rawActual `json:"values"`
+	}
+	type rawInput struct {
+		Actuals rawActuals `json:"actuals"`
+	}
+	type rawEntry struct {
+		Input  rawInput   `json:"input"`
+		Models []rawModel `json:"models"`
+	}
+	var payload []rawEntry
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+	entries := make([]forecastResultEntry, 0, len(payload))
+	for _, item := range payload {
+		if len(item.Models) == 0 {
+			continue
+		}
+		model := item.Models[0]
+		entry := forecastResultEntry{
+			Name:        item.Input.Actuals.Name,
+			Granularity: item.Input.Actuals.Granularity,
+			Actuals:     make([]seriesPoint, 0, len(item.Input.Actuals.Values)),
+			Forecasts:   make([]seriesPoint, 0, len(model.Forecasts)),
+			Model: forecastModelInfo{
+				Name:         model.ModelName,
+				Status:       model.Status,
+				Plausibility: model.ForecastPlausibility,
+			},
+		}
+		if model.ModelSelection != nil && model.ModelSelection.Ranking != nil {
+			entry.Model.RankPosition = model.ModelSelection.Ranking.RankPosition
+			entry.Model.RankScore = model.ModelSelection.Ranking.Score
+		}
+		for _, v := range item.Input.Actuals.Values {
+			entry.Actuals = append(entry.Actuals, seriesPoint{Timestamp: v.Timestamp, Value: v.Value})
+		}
+		for _, f := range model.Forecasts {
+			entry.Forecasts = append(entry.Forecasts, seriesPoint{Timestamp: f.Timestamp, Value: f.Point})
+		}
+		entries = append(entries, entry)
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("no forecast models in result payload")
+	}
+	return entries, nil
 }
 
 func (m *ForecastModel) Result() (*workflow.RunResult, string, error) {
