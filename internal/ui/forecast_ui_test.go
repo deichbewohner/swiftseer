@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,12 +49,32 @@ func TestForecastModelRendersResultView(t *testing.T) {
 		t.Fatalf("expected model to be in results mode")
 	}
 	view := m.renderResultView()
-	if !contains(view, "┌──────────────────────────────────────────────┐") {
-		t.Fatalf("expected placeholder plot in view: %s", view)
+	if contains(view, "┌──────────────────────────────────────────────┐") {
+		t.Fatalf("deprecated placeholder should not render: %s", view)
 	}
-	box := m.View()
-	if !contains(box, "Forecast 1/") {
-		t.Fatalf("expected rendered forecast numbering in box: %s", box)
+	entries, err := parseForecastResults(data)
+	if err != nil {
+		t.Fatalf("parseForecastResults error: %v", err)
+	}
+	expectedHistory := len(filterValues(entries[0].Actuals))
+	_, _, expectedForecast := collectSeries(entries[0])
+	expectedHistoryLine := fmt.Sprintf("%-*s%d", resultFieldLabelWidth, "History points:", expectedHistory)
+	if !contains(view, expectedHistoryLine) {
+		t.Fatalf("expected history summary %q in view: %s", expectedHistoryLine, view)
+	}
+	expectedForecastLine := fmt.Sprintf("%-*s%d", resultFieldLabelWidth, "Forecast points:", expectedForecast)
+	if !contains(view, expectedForecastLine) {
+		t.Fatalf("expected forecast summary %q in view: %s", expectedForecastLine, view)
+	}
+	if !strings.Contains(view, "\x1b[") {
+		t.Fatalf("expected colored plot output in view: %s", view)
+	}
+	if !contains(view, "┤") {
+		t.Fatalf("expected asciigraph axis in view: %s", view)
+	}
+	selection := fmt.Sprintf("%3d/%3d", 1, len(m.results))
+	if !contains(view, selection) {
+		t.Fatalf("expected rendered forecast numbering in footer: %s", view)
 	}
 }
 
@@ -95,4 +116,98 @@ func TestNewForecastResultsViewer(t *testing.T) {
 
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
+}
+
+func TestCollectSeriesKeepsHistoryWithForecast(t *testing.T) {
+	entry := forecastResultEntry{
+		Actuals: []seriesPoint{
+			{Value: 10},
+			{Value: 12},
+		},
+		Forecasts: []seriesPoint{
+			{Value: 14},
+		},
+	}
+	series, historyCount, forecastCount := collectSeries(entry)
+	if historyCount == 0 {
+		t.Fatalf("expected at least one history point, got %d", historyCount)
+	}
+	if forecastCount != 1 {
+		t.Fatalf("expected one forecast point, got %d", forecastCount)
+	}
+	if len(series) != 2 {
+		t.Fatalf("expected series length 2, got %d", len(series))
+	}
+	if series[0] != 12 {
+		t.Fatalf("expected retained history value 12, got %.2f", series[0])
+	}
+}
+
+func TestWrapSeriesNameBalancing(t *testing.T) {
+	width := 20
+	lines := wrapSeriesName("Alpha Beta Gamma Delta", width)
+	if len(lines) != 2 {
+		t.Fatalf("expected two lines, got %d", len(lines))
+	}
+	line1 := strings.TrimSpace(lines[0])
+	line2 := strings.TrimSpace(lines[1])
+	if line1 == "" || line2 == "" {
+		t.Fatalf("expected non-empty balanced lines, got %q and %q", line1, line2)
+	}
+	if diff := intAbs(len([]rune(line1)) - len([]rune(line2))); diff > 1 {
+		t.Fatalf("expected lengths within 1, got %d (%q vs %q)", diff, line1, line2)
+	}
+}
+
+func TestWrapSeriesNameSingleLinePadding(t *testing.T) {
+	width := 20
+	lines := wrapSeriesName("Short", width)
+	if len(lines) != 2 {
+		t.Fatalf("expected two lines, got %d", len(lines))
+	}
+	if lines[0] != "" {
+		t.Fatalf("expected leading blank line, got %q", lines[0])
+	}
+	if strings.TrimSpace(lines[1]) != "Short" {
+		t.Fatalf("expected centered word, got %q", lines[1])
+	}
+}
+
+func TestFormatAxisLabelValue(t *testing.T) {
+	got := formatAxisLabelValue("37000", 5)
+	if got != "37.0k" {
+		t.Fatalf("expected 37.0k, got %q", got)
+	}
+	got = formatAxisLabelValue("100", 5)
+	if got != "  100" {
+		t.Fatalf("expected padded 100, got %q", got)
+	}
+}
+
+func TestNormalizeYAxisLabels(t *testing.T) {
+	raw := "  37000 ┤\n   100 ┤\n"
+	normalized := normalizeYAxisLabels(raw)
+	for _, line := range strings.Split(normalized, "\n") {
+		if line == "" {
+			continue
+		}
+		idx := strings.IndexRune(line, '┤')
+		if idx == -1 {
+			continue
+		}
+		label := line[:idx]
+		if len([]rune(label)) != 5 {
+			t.Fatalf("expected label width 5, got %q", label)
+		}
+		if strings.TrimSpace(label) == "37000" {
+			t.Fatalf("expected scaled label, got %q", label)
+		}
+	}
+}
+
+func intAbs(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }

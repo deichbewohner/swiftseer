@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -16,15 +17,21 @@ import (
 	"github.com/deichbewohner/swiftseer/internal/models"
 	"github.com/deichbewohner/swiftseer/internal/version"
 	"github.com/deichbewohner/swiftseer/internal/workflow"
+	"github.com/guptarohit/asciigraph"
 )
 
 var forecastBoxStyle = lipgloss.NewStyle().
 	Border(lipgloss.NormalBorder()).
 	BorderForeground(lipgloss.Color("240")).
 	Padding(0, 1).
-	Width(50)
+	Width(47)
 
-var resultPlotPlaceholder = buildResultPlaceholder()
+const (
+	resultContentWidth    = 46
+	resultPlotWidth       = 39
+	resultPlotHeight      = 10
+	resultFieldLabelWidth = 18
+)
 
 type seriesPoint struct {
 	Timestamp string
@@ -47,52 +54,114 @@ type forecastResultEntry struct {
 	Model       forecastModelInfo
 }
 
-func buildResultPlaceholder() string {
-	const (
-		contentWidth = 48
-		height       = 8
-	)
-	innerWidth := contentWidth - 2
-	pivot := innerWidth / 2
-	heights := make([]int, innerWidth)
-	for col := 0; col < innerWidth; col++ {
-		var h float64
-		if col < pivot {
-			denom := float64(maxInt(1, pivot-1))
-			ratio := float64(col) / denom
-			h = 2 + 3*math.Sin(ratio*math.Pi)
-		} else {
-			denom := float64(maxInt(1, innerWidth-pivot-1))
-			ratio := float64(col-pivot) / denom
-			h = 3 + 4*ratio
-		}
-		heights[col] = clampInt(int(math.Round(h)), 0, height-1)
+func wrapSeriesName(name string, width int) []string {
+	if width <= 0 {
+		return []string{""}
 	}
-	var b strings.Builder
-	b.WriteString("┌" + strings.Repeat("─", innerWidth) + "┐\n")
-	for row := 0; row < height; row++ {
-		b.WriteString("│")
-		level := height - row - 1
-		for col := 0; col < innerWidth; col++ {
-			if col == pivot {
-				b.WriteRune('│')
-				continue
-			}
-			h := heights[col]
-			if h >= level {
-				if col < pivot {
-					b.WriteRune('█')
-				} else {
-					b.WriteRune('░')
-				}
-			} else {
-				b.WriteRune(' ')
+
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return []string{""}
+	}
+	if utf8.RuneCountInString(trimmed) <= width {
+		return []string{"", centerLine(trimmed, width)}
+	}
+
+	first, second := balancedLines(trimmed, width)
+	var lines []string
+	if first != "" {
+		lines = append(lines, centerLine(first, width))
+	}
+	if second != "" {
+		lines = append(lines, centerLine(second, width))
+	}
+	if len(lines) == 0 {
+		lines = append(lines, centerLine(truncate(trimmed, width), width))
+	}
+	if len(lines) == 1 {
+		lines = append([]string{""}, lines...)
+	}
+	return lines
+}
+
+func balancedLines(text string, width int) (string, string) {
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return "", ""
+	}
+	if len(words) == 1 {
+		word := words[0]
+		if utf8.RuneCountInString(word) > width {
+			return truncate(word, width), ""
+		}
+		return word, ""
+	}
+
+	bestSplit := -1
+	bestDiff := width + 1
+	for i := 1; i < len(words); i++ {
+		first := strings.Join(words[:i], " ")
+		second := strings.Join(words[i:], " ")
+		w1 := utf8.RuneCountInString(first)
+		w2 := utf8.RuneCountInString(second)
+		if w1 > width || w2 > width {
+			continue
+		}
+		diff := w1 - w2
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff < bestDiff {
+			bestDiff = diff
+			bestSplit = i
+			if diff == 0 {
+				break
 			}
 		}
-		b.WriteString("│\n")
 	}
-	b.WriteString("└" + strings.Repeat("─", innerWidth) + "┘")
-	return b.String()
+
+	if bestSplit != -1 {
+		return strings.Join(words[:bestSplit], " "), strings.Join(words[bestSplit:], " ")
+	}
+
+	chosen := []string{words[0]}
+	split := 1
+	current := words[0]
+	for split < len(words) {
+		candidate := current + " " + words[split]
+		if utf8.RuneCountInString(candidate) > width {
+			break
+		}
+		current = candidate
+		chosen = append(chosen, words[split])
+		split++
+	}
+
+	first := strings.Join(chosen, " ")
+	if utf8.RuneCountInString(first) > width {
+		first = truncate(first, width)
+	}
+	if split >= len(words) {
+		return first, ""
+	}
+
+	second := strings.Join(words[split:], " ")
+	if utf8.RuneCountInString(second) > width {
+		second = truncate(second, width)
+	}
+	return first, second
+}
+
+func centerLine(text string, width int) string {
+	length := utf8.RuneCountInString(text)
+	if length >= width {
+		return text
+	}
+	padding := (width - length) / 2
+	if padding <= 0 {
+		return text
+	}
+	return strings.Repeat(" ", padding) + text
 }
 
 type StageStatus struct {
@@ -576,16 +645,6 @@ func (m *ForecastModel) moveSelection(delta int) {
 	}
 }
 
-func (m *ForecastModel) currentResult() *forecastResultEntry {
-	if len(m.results) == 0 {
-		return nil
-	}
-	if m.index < 0 || m.index >= len(m.results) {
-		return &m.results[0]
-	}
-	return &m.results[m.index]
-}
-
 func (m *ForecastModel) renderResultView() string {
 	var b strings.Builder
 	b.WriteString(m.renderHeader())
@@ -594,49 +653,389 @@ func (m *ForecastModel) renderResultView() string {
 		return b.String()
 	}
 	entry := m.results[m.index]
-	b.WriteString(fmt.Sprintf("Forecast %d/%d\n", m.index+1, len(m.results)))
-	if entry.Name != "" {
-		b.WriteString(fmt.Sprintf("Series: %s\n", truncate(entry.Name, 40)))
-	}
-	b.WriteString("\n")
-	b.WriteString(resultPlotPlaceholder)
-	b.WriteString("\n\n")
-	b.WriteString(fmt.Sprintf("Model: %s\n", truncate(entry.Model.Name, 40)))
-	meta := buildModelMeta(entry)
-	if meta != "" {
-		b.WriteString(truncate(meta, 48))
+	for _, line := range wrapSeriesName(entry.Name, resultContentWidth) {
+		b.WriteString(line)
 		b.WriteString("\n")
 	}
+	b.WriteString("\n")
+	plot, _, forecastCount := buildResultPlot(entry)
+	b.WriteString(plot)
+	b.WriteString("\n\n")
+	writeResultField(&b, "Model:", truncate(entry.Model.Name, 40))
+	writeResultField(&b, "History points:", fmt.Sprintf("%d", len(filterValues(entry.Actuals))))
+	writeResultField(&b, "Forecast points:", fmt.Sprintf("%d", forecastCount))
 	if len(entry.Forecasts) > 0 {
 		next := entry.Forecasts[0]
-		b.WriteString(fmt.Sprintf("Next: %s  %s\n", formatTimestamp(next.Timestamp), formatValue(next.Value)))
+		writeResultField(&b, "Next:", fmt.Sprintf("%s  %s", formatTimestamp(next.Timestamp), formatValue(next.Value)))
 	}
 	if len(entry.Actuals) > 0 {
 		last := entry.Actuals[len(entry.Actuals)-1]
-		b.WriteString(fmt.Sprintf("Last actual: %s  %s\n", formatTimestamp(last.Timestamp), formatValue(last.Value)))
+		writeResultField(&b, "Last actual:", fmt.Sprintf("%s  %s", formatTimestamp(last.Timestamp), formatValue(last.Value)))
 	}
-	b.WriteString("\n← Prev    → Next    q Quit\n")
+	footer := "← Prev    → Next"
+	quit := "    q Quit"
+	selection := InfoStyle.Render(fmt.Sprintf("%3d/%3d", m.index+1, len(m.results)))
+	footerWidth := len([]rune(footer)) + len([]rune(quit))
+	const selectionGap = 12
+	padding := resultContentWidth - footerWidth - selectionGap - utf8.RuneCountInString(selection)
+	if padding < 0 {
+		padding = 0
+	}
+	b.WriteString("\n")
+	b.WriteString(footer)
+	b.WriteString(quit)
+	b.WriteString(strings.Repeat(" ", selectionGap))
+	b.WriteString(strings.Repeat(" ", padding))
+	b.WriteString(selection)
 	return b.String()
 }
 
-func buildModelMeta(entry forecastResultEntry) string {
-	var parts []string
-	if entry.Model.Status != "" {
-		parts = append(parts, entry.Model.Status)
+func buildResultPlot(entry forecastResultEntry) (string, int, int) {
+	series, historyCount, forecastCount := collectSeries(entry)
+	if len(series) == 0 {
+		return "No chart data available", historyCount, forecastCount
 	}
-	if entry.Model.Plausibility != "" {
-		parts = append(parts, entry.Model.Plausibility)
+	width := resultPlotWidth
+	if width < 3 {
+		width = 3
 	}
-	if entry.Model.RankPosition > 0 {
-		parts = append(parts, fmt.Sprintf("Rank #%d", entry.Model.RankPosition))
+	resampled := resampleSeries(series, width)
+	if len(resampled) == 0 {
+		return "No chart data available", historyCount, forecastCount
 	}
-	if entry.Model.RankScore != 0 {
-		parts = append(parts, fmt.Sprintf("Score %.2f", entry.Model.RankScore))
+
+	if historyCount == 0 {
+		graph := asciigraph.Plot(
+			resampled,
+			asciigraph.Width(len(resampled)),
+			asciigraph.Height(resultPlotHeight),
+			asciigraph.Offset(0),
+			asciigraph.SeriesColors(asciigraph.Red),
+		)
+		graph = tightenPlotSpacing(graph)
+		graph = normalizeYAxisLabels(graph)
+		return strings.TrimRight(graph, "\n"), historyCount, forecastCount
 	}
-	if len(entry.Forecasts) > 0 {
-		parts = append(parts, fmt.Sprintf("Horizon %d", len(entry.Forecasts)))
+	if forecastCount == 0 {
+		graph := asciigraph.Plot(
+			resampled,
+			asciigraph.Width(len(resampled)),
+			asciigraph.Height(resultPlotHeight),
+			asciigraph.Offset(0),
+			asciigraph.SeriesColors(asciigraph.Blue),
+		)
+		graph = tightenPlotSpacing(graph)
+		graph = normalizeYAxisLabels(graph)
+		return strings.TrimRight(graph, "\n"), historyCount, forecastCount
 	}
-	return strings.Join(parts, "  ")
+
+	splitCol := calculateSplitColumn(len(series), historyCount, len(resampled))
+	data := buildColoredSeries(resampled, splitCol)
+	graph := asciigraph.PlotMany(
+		data,
+		asciigraph.Width(len(resampled)),
+		asciigraph.Height(resultPlotHeight),
+		asciigraph.Offset(0),
+		asciigraph.SeriesColors(asciigraph.Blue, asciigraph.Red),
+	)
+	graph = tightenPlotSpacing(graph)
+	graph = normalizeYAxisLabels(graph)
+	return strings.TrimRight(graph, "\n"), historyCount, forecastCount
+}
+
+func collectSeries(entry forecastResultEntry) ([]float64, int, int) {
+	actuals := filterValues(entry.Actuals)
+	forecasts := filterValues(entry.Forecasts)
+	forecastCount := len(forecasts)
+
+	historyCount := 0
+	if len(actuals) > 0 {
+		base := forecastCount / 2
+		if len(actuals) >= 3 && base < 3 {
+			base = 3
+		}
+		if base > len(actuals) {
+			base = len(actuals)
+		}
+		if base == 0 && forecastCount > 0 {
+			base = 1
+		}
+		historyCount = base
+	}
+
+	series := make([]float64, 0, historyCount+forecastCount)
+	if historyCount > 0 {
+		series = append(series, actuals[len(actuals)-historyCount:]...)
+	}
+	if forecastCount > 0 {
+		series = append(series, forecasts...)
+	}
+	if len(series) == 0 && len(actuals) > 0 {
+		historyCount = len(actuals)
+		series = append(series, actuals...)
+	}
+	return series, historyCount, forecastCount
+}
+
+func resampleSeries(series []float64, width int) []float64 {
+	if len(series) == 0 || width <= 0 {
+		return nil
+	}
+	if len(series) == 1 {
+		out := make([]float64, width)
+		for i := range out {
+			out[i] = series[0]
+		}
+		return out
+	}
+	if width == 1 {
+		return []float64{series[len(series)-1]}
+	}
+	out := make([]float64, width)
+	last := len(series) - 1
+	for i := 0; i < width; i++ {
+		pos := float64(i) * float64(last) / float64(width-1)
+		j := int(math.Floor(pos))
+		if j >= last {
+			out[i] = series[last]
+			continue
+		}
+		t := pos - float64(j)
+		out[i] = series[j]*(1-t) + series[j+1]*t
+	}
+	return out
+}
+
+func calculateSplitColumn(originalLen, historyCount, resampledLen int) int {
+	if resampledLen <= 0 {
+		return 0
+	}
+	if historyCount <= 0 {
+		return 0
+	}
+	if resampledLen == 1 || originalLen <= 1 {
+		return 0
+	}
+	splitIndex := historyCount - 1
+	if splitIndex < 0 {
+		splitIndex = 0
+	}
+	if splitIndex >= originalLen {
+		splitIndex = originalLen - 1
+	}
+	col := int(math.Round(float64(splitIndex) * float64(resampledLen-1) / float64(originalLen-1)))
+	if col < 0 {
+		col = 0
+	}
+	if col >= resampledLen {
+		col = resampledLen - 1
+	}
+	return col
+}
+
+func buildColoredSeries(series []float64, splitCol int) [][]float64 {
+	total := len(series)
+	history := make([]float64, total)
+	forecast := make([]float64, total)
+	for i := 0; i < total; i++ {
+		history[i] = math.NaN()
+		forecast[i] = math.NaN()
+		if i <= splitCol {
+			history[i] = series[i]
+		}
+		if i >= splitCol {
+			forecast[i] = series[i]
+		}
+	}
+	if splitCol >= 0 && splitCol < total {
+		history[splitCol] = series[splitCol]
+		forecast[splitCol] = series[splitCol]
+	}
+	return [][]float64{history, forecast}
+}
+
+func tightenPlotSpacing(plot string) string {
+	lines := strings.Split(plot, "\n")
+	for i, line := range lines {
+		idx := strings.IndexRune(line, '┤')
+		if idx == -1 {
+			idx = strings.IndexRune(line, '┼')
+		}
+		if idx == -1 || idx+1 >= len(line) {
+			continue
+		}
+		if line[idx+1] == ' ' {
+			lines[i] = line[:idx+1] + line[idx+2:]
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func normalizeYAxisLabels(plot string) string {
+	lines := strings.Split(plot, "\n")
+	const labelWidth = 5
+	for i, line := range lines {
+		if line == "" {
+			continue
+		}
+		idx := strings.IndexRune(line, '┤')
+		if idx == -1 {
+			idx = strings.IndexRune(line, '┼')
+		}
+		if idx != -1 {
+			label := line[:idx]
+			formatted := formatAxisLabelValue(label, labelWidth)
+			if len(formatted) < labelWidth {
+				formatted = strings.Repeat(" ", labelWidth-len(formatted)) + formatted
+			} else if len(formatted) > labelWidth {
+				formatted = formatted[len(formatted)-labelWidth:]
+			}
+			lines[i] = formatted + line[idx:]
+			continue
+		}
+		idx = strings.IndexRune(line, '│')
+		if idx != -1 {
+			lines[i] = strings.Repeat(" ", labelWidth) + line[idx:]
+			continue
+		}
+		lines[i] = strings.Repeat(" ", labelWidth) + line
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatAxisLabelValue(raw string, width int) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return strings.Repeat(" ", width)
+	}
+	value, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil {
+		text := truncate(trimmed, width)
+		if len(text) < width {
+			text = strings.Repeat(" ", width-len(text)) + text
+		}
+		return text
+	}
+	sign := ""
+	if value < 0 {
+		sign = "-"
+		value = -value
+	}
+	units := []string{"", "k", "M", "B", "T"}
+	unitIdx := 0
+	for value >= 1000 && unitIdx < len(units)-1 {
+		value /= 1000
+		unitIdx++
+	}
+	unit := units[unitIdx]
+	for {
+		maxDigits := width - len(sign) - len(unit)
+		if maxDigits <= 0 {
+			text := truncate(trimmed, width)
+			if len(text) < width {
+				text = strings.Repeat(" ", width-len(text)) + text
+			}
+			return text
+		}
+		maxDecimals := 0
+		if maxDigits > 1 {
+			maxDecimals = maxDigits - 1
+		}
+		if maxDecimals > 2 {
+			maxDecimals = 2
+		}
+		retry := false
+		for decimals := maxDecimals; decimals >= 0; decimals-- {
+			rounded := roundToDecimals(value, decimals)
+			if rounded >= 1000 && unitIdx < len(units)-1 {
+				value = rounded / 1000
+				unitIdx++
+				unit = units[unitIdx]
+				retry = true
+				break
+			}
+			number := formatNumber(rounded, decimals)
+			formatted := number
+			if unit != "" && !strings.Contains(formatted, ".") && len(formatted)+2 <= maxDigits {
+				formatted += ".0"
+			}
+			if len(formatted) <= maxDigits {
+				result := sign + formatted + unit
+				if len(result) < width {
+					result = strings.Repeat(" ", width-len(result)) + result
+				}
+				return result
+			}
+		}
+		if retry {
+			continue
+		}
+		number := fmt.Sprintf("%.0f", math.Round(value))
+		if len(number) > maxDigits {
+			number = number[len(number)-maxDigits:]
+		}
+		formatted := number
+		if unit != "" && !strings.Contains(formatted, ".") && len(formatted)+2 <= maxDigits {
+			formatted += ".0"
+		}
+		result := sign + formatted + unit
+		if len(result) < width {
+			result = strings.Repeat(" ", width-len(result)) + result
+		} else if len(result) > width {
+			result = result[len(result)-width:]
+		}
+		return result
+	}
+}
+
+func roundToDecimals(value float64, decimals int) float64 {
+	if decimals <= 0 {
+		return math.Round(value)
+	}
+	factor := math.Pow10(decimals)
+	return math.Round(value*factor) / factor
+}
+
+func formatNumber(value float64, decimals int) string {
+	if decimals <= 0 {
+		return fmt.Sprintf("%.0f", math.Round(value))
+	}
+	text := strconv.FormatFloat(value, 'f', decimals, 64)
+	text = strings.TrimRight(text, "0")
+	text = strings.TrimRight(text, ".")
+	if text == "" {
+		return "0"
+	}
+	return text
+}
+
+func filterValues(points []seriesPoint) []float64 {
+	values := make([]float64, 0, len(points))
+	for _, p := range points {
+		if math.IsNaN(p.Value) || math.IsInf(p.Value, 0) {
+			continue
+		}
+		values = append(values, p.Value)
+	}
+	return values
+}
+
+func writeResultField(b *strings.Builder, label, value string) {
+	if value == "" {
+		return
+	}
+	maxWidth := resultContentWidth - resultFieldLabelWidth
+	if maxWidth < 0 {
+		maxWidth = 0
+	}
+	display := truncate(value, maxWidth)
+	if label == "" {
+		b.WriteString(strings.Repeat(" ", resultFieldLabelWidth))
+		b.WriteString(display)
+		b.WriteString("\n")
+		return
+	}
+	fmt.Fprintf(b, "%-*s%s\n", resultFieldLabelWidth, label, display)
 }
 
 func truncate(s string, max int) string {
@@ -671,7 +1070,22 @@ func formatValue(v float64) string {
 	if math.Abs(v-rounded) < 0.0001 {
 		return addThousands(fmt.Sprintf("%.0f", rounded))
 	}
-	return fmt.Sprintf("%.2f", v)
+	s := fmt.Sprintf("%.2f", v)
+	sign := ""
+	if strings.HasPrefix(s, "-") {
+		sign = "-"
+		s = s[1:]
+	}
+	parts := strings.SplitN(s, ".", 2)
+	intPart := ""
+	if len(parts) > 0 {
+		intPart = parts[0]
+	}
+	formattedInt := addThousands(sign + intPart)
+	if len(parts) == 2 {
+		return formattedInt + "." + parts[1]
+	}
+	return formattedInt
 }
 
 func addThousands(s string) string {
@@ -713,23 +1127,6 @@ func (m *ForecastModel) loadResults(data []byte) error {
 	m.quitting = false
 	m.err = nil
 	return nil
-}
-
-func clampInt(v, min, max int) int {
-	if v < min {
-		return min
-	}
-	if v > max {
-		return max
-	}
-	return v
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func parseForecastResults(data []byte) ([]forecastResultEntry, error) {
@@ -793,7 +1190,7 @@ func parseForecastResults(data []byte) ([]forecastResultEntry, error) {
 			entry.Model.RankScore = model.ModelSelection.Ranking.Score
 		}
 		for _, v := range item.Input.Actuals.Values {
-			entry.Actuals = append(entry.Actuals, seriesPoint{Timestamp: v.Timestamp, Value: v.Value})
+			entry.Actuals = append(entry.Actuals, seriesPoint(v))
 		}
 		for _, f := range model.Forecasts {
 			entry.Forecasts = append(entry.Forecasts, seriesPoint{Timestamp: f.Timestamp, Value: f.Point})
