@@ -184,6 +184,27 @@ func TestFormatAxisLabelValue(t *testing.T) {
 	}
 }
 
+func TestWrapSeriesNameAtContentWidth(t *testing.T) {
+	name := strings.Repeat("x", resultContentWidth+1)
+	lines := wrapSeriesName(name, resultContentWidth)
+	if len(lines) != 2 {
+		t.Fatalf("expected two lines, got %d", len(lines))
+	}
+	nonEmpty := 0
+	for i, line := range lines {
+		width := len([]rune(strings.TrimRight(line, " ")))
+		if width > resultContentWidth {
+			t.Fatalf("line %d too wide: %d (limit %d)", i, width, resultContentWidth)
+		}
+		if strings.TrimSpace(line) != "" {
+			nonEmpty++
+		}
+	}
+	if nonEmpty == 0 {
+		t.Fatalf("expected at least one non-empty line")
+	}
+}
+
 func TestNormalizeYAxisLabels(t *testing.T) {
 	raw := "  37000 ┤\n   100 ┤\n"
 	normalized := normalizeYAxisLabels(raw)

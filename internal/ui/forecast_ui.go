@@ -27,7 +27,7 @@ var forecastBoxStyle = lipgloss.NewStyle().
 	Width(47)
 
 const (
-	resultContentWidth    = 46
+	resultContentWidth    = 45
 	resultPlotWidth       = 39
 	resultPlotHeight      = 10
 	resultFieldLabelWidth = 18
