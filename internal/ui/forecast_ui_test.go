@@ -14,7 +14,7 @@ import (
 
 func loadSampleResults(t *testing.T) []byte {
 	t.Helper()
-	path := filepath.Join("..", "..", "forecast-results.json")
+	path := filepath.Join("testdata", "forecast-results.fixture.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("failed to read sample results: %v", err)

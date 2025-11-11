@@ -1,0 +1,132 @@
+[
+  {
+    "input": {
+      "actuals": {
+        "name": "units-Product-08-Customer-01",
+        "granularity": "monthly",
+        "values": [
+          {
+            "time_stamp_utc": "2020-11-01T00:00:00",
+            "value": 54515
+          },
+          {
+            "time_stamp_utc": "2020-12-01T00:00:00",
+            "value": 56781
+          },
+          {
+            "time_stamp_utc": "2021-01-01T00:00:00",
+            "value": 42344
+          },
+          {
+            "time_stamp_utc": "2021-02-01T00:00:00",
+            "value": 58021
+          },
+          {
+            "time_stamp_utc": "2021-03-01T00:00:00",
+            "value": 64808
+          },
+          {
+            "time_stamp_utc": "2021-04-01T00:00:00",
+            "value": 58918
+          }
+        ]
+      }
+    },
+    "models": [
+      {
+        "model_name": "LinearRegression",
+        "status": "Successful",
+        "forecast_plausibility": "Plausible",
+        "forecasts": [
+          {
+            "time_stamp_utc": "2025-11-01T00:00:00",
+            "point_forecast_value": 76552.47118680993
+          },
+          {
+            "time_stamp_utc": "2025-12-01T00:00:00",
+            "point_forecast_value": 88046.7235923504
+          },
+          {
+            "time_stamp_utc": "2026-01-01T00:00:00",
+            "point_forecast_value": 71639.68439861777
+          },
+          {
+            "time_stamp_utc": "2026-02-01T00:00:00",
+            "point_forecast_value": 80414.97188841554
+          }
+        ],
+        "model_selection": {
+          "ranking": {
+            "rank_position": 1,
+            "score": 137950432.33533624
+          }
+        }
+      }
+    ]
+  },
+  {
+    "input": {
+      "actuals": {
+        "name": "units-Product-05-Customer-03",
+        "granularity": "monthly",
+        "values": [
+          {
+            "time_stamp_utc": "2020-11-01T00:00:00",
+            "value": 210643
+          },
+          {
+            "time_stamp_utc": "2020-12-01T00:00:00",
+            "value": 206792
+          },
+          {
+            "time_stamp_utc": "2021-01-01T00:00:00",
+            "value": 213182
+          },
+          {
+            "time_stamp_utc": "2021-02-01T00:00:00",
+            "value": 192559
+          },
+          {
+            "time_stamp_utc": "2021-03-01T00:00:00",
+            "value": 222673
+          },
+          {
+            "time_stamp_utc": "2021-04-01T00:00:00",
+            "value": 226235
+          }
+        ]
+      }
+    },
+    "models": [
+      {
+        "model_name": "Theta",
+        "status": "Successful",
+        "forecast_plausibility": "Plausible",
+        "forecasts": [
+          {
+            "time_stamp_utc": "2025-11-01T00:00:00",
+            "point_forecast_value": 313559.5690429955
+          },
+          {
+            "time_stamp_utc": "2025-12-01T00:00:00",
+            "point_forecast_value": 314768.12904577405
+          },
+          {
+            "time_stamp_utc": "2026-01-01T00:00:00",
+            "point_forecast_value": 315976.6890485526
+          },
+          {
+            "time_stamp_utc": "2026-02-01T00:00:00",
+            "point_forecast_value": 317185.24905133113
+          }
+        ],
+        "model_selection": {
+          "ranking": {
+            "rank_position": 1,
+            "score": 1841046296.3009145
+          }
+        }
+      }
+    ]
+  }
+]
