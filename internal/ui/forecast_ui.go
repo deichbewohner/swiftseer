@@ -86,17 +86,26 @@ func wrapSeriesName(name string, width int) []string {
 
 func balancedLines(text string, width int) (string, string) {
 	words := strings.Fields(text)
-	if len(words) == 0 {
+	switch len(words) {
+	case 0:
 		return "", ""
+	case 1:
+		return singleWordLines(words[0], width)
 	}
-	if len(words) == 1 {
-		word := words[0]
-		if utf8.RuneCountInString(word) > width {
-			return truncate(word, width), ""
-		}
+	if first, second, ok := evenSplit(words, width); ok {
+		return first, second
+	}
+	return greedySplit(words, width)
+}
+
+func singleWordLines(word string, width int) (string, string) {
+	if utf8.RuneCountInString(word) <= width {
 		return word, ""
 	}
+	return truncate(word, width), ""
+}
 
+func evenSplit(words []string, width int) (string, string, bool) {
 	bestSplit := -1
 	bestDiff := width + 1
 	for i := 1; i < len(words); i++ {
@@ -119,32 +128,29 @@ func balancedLines(text string, width int) (string, string) {
 			}
 		}
 	}
-
-	if bestSplit != -1 {
-		return strings.Join(words[:bestSplit], " "), strings.Join(words[bestSplit:], " ")
+	if bestSplit == -1 {
+		return "", "", false
 	}
+	return strings.Join(words[:bestSplit], " "), strings.Join(words[bestSplit:], " "), true
+}
 
-	chosen := []string{words[0]}
+func greedySplit(words []string, width int) (string, string) {
+	first := words[0]
 	split := 1
-	current := words[0]
 	for split < len(words) {
-		candidate := current + " " + words[split]
+		candidate := first + " " + words[split]
 		if utf8.RuneCountInString(candidate) > width {
 			break
 		}
-		current = candidate
-		chosen = append(chosen, words[split])
+		first = candidate
 		split++
 	}
-
-	first := strings.Join(chosen, " ")
 	if utf8.RuneCountInString(first) > width {
 		first = truncate(first, width)
 	}
 	if split >= len(words) {
 		return first, ""
 	}
-
 	second := strings.Join(words[split:], " ")
 	if utf8.RuneCountInString(second) > width {
 		second = truncate(second, width)
@@ -910,82 +916,108 @@ func formatAxisLabelValue(raw string, width int) string {
 	}
 	value, err := strconv.ParseFloat(trimmed, 64)
 	if err != nil {
-		text := truncate(trimmed, width)
-		if len(text) < width {
-			text = strings.Repeat(" ", width-len(text)) + text
-		}
-		return text
+		return padLeftToWidth(truncate(trimmed, width), width)
 	}
+	if formatted, ok := scaledAxisValue(value, width); ok {
+		return formatted
+	}
+	return padLeftToWidth(truncate(trimmed, width), width)
+}
+
+func scaledAxisValue(value float64, width int) (string, bool) {
 	sign := ""
 	if value < 0 {
 		sign = "-"
 		value = -value
 	}
 	units := []string{"", "k", "M", "B", "T"}
-	unitIdx := 0
-	for value >= 1000 && unitIdx < len(units)-1 {
-		value /= 1000
-		unitIdx++
+	for idx, unit := range units {
+		formatted, nextValue, scale := tryAxisFormat(sign, value, unit, width, idx < len(units)-1)
+		if formatted != "" {
+			return formatted, true
+		}
+		if !scale {
+			break
+		}
+		value = nextValue
 	}
-	unit := units[unitIdx]
-	for {
-		maxDigits := width - len(sign) - len(unit)
-		if maxDigits <= 0 {
-			text := truncate(trimmed, width)
-			if len(text) < width {
-				text = strings.Repeat(" ", width-len(text)) + text
-			}
-			return text
-		}
-		maxDecimals := 0
-		if maxDigits > 1 {
-			maxDecimals = maxDigits - 1
-		}
-		if maxDecimals > 2 {
-			maxDecimals = 2
-		}
-		retry := false
-		for decimals := maxDecimals; decimals >= 0; decimals-- {
-			rounded := roundToDecimals(value, decimals)
-			if rounded >= 1000 && unitIdx < len(units)-1 {
-				value = rounded / 1000
-				unitIdx++
-				unit = units[unitIdx]
-				retry = true
-				break
-			}
-			number := formatNumber(rounded, decimals)
-			formatted := number
-			if unit != "" && !strings.Contains(formatted, ".") && len(formatted)+2 <= maxDigits {
-				formatted += ".0"
-			}
-			if len(formatted) <= maxDigits {
-				result := sign + formatted + unit
-				if len(result) < width {
-					result = strings.Repeat(" ", width-len(result)) + result
-				}
-				return result
-			}
-		}
-		if retry {
-			continue
-		}
-		number := fmt.Sprintf("%.0f", math.Round(value))
-		if len(number) > maxDigits {
-			number = number[len(number)-maxDigits:]
-		}
-		formatted := number
-		if unit != "" && !strings.Contains(formatted, ".") && len(formatted)+2 <= maxDigits {
-			formatted += ".0"
-		}
-		result := sign + formatted + unit
-		if len(result) < width {
-			result = strings.Repeat(" ", width-len(result)) + result
-		} else if len(result) > width {
-			result = result[len(result)-width:]
-		}
-		return result
+	return "", false
+}
+
+func tryAxisFormat(sign string, value float64, unit string, width int, canScale bool) (string, float64, bool) {
+	maxDigits := width - len(sign) - len(unit)
+	if maxDigits <= 0 {
+		return "", 0, false
 	}
+	maxDecimals := maxDigits - 1
+	if maxDecimals < 0 {
+		maxDecimals = 0
+	}
+	if maxDecimals > 2 {
+		maxDecimals = 2
+	}
+	for decimals := maxDecimals; decimals >= 0; decimals-- {
+		rounded := roundToDecimals(value, decimals)
+		if rounded >= 1000 && canScale {
+			return "", rounded / 1000, true
+		}
+		if number := formatWithUnit(rounded, decimals, unit, maxDigits); number != "" {
+			return padResultText(sign, number, unit, width), 0, false
+		}
+	}
+	if number := fallbackInteger(value, unit, maxDigits); number != "" {
+		return padResultText(sign, number, unit, width), 0, false
+	}
+	return "", 0, false
+}
+
+func formatWithUnit(value float64, decimals int, unit string, maxDigits int) string {
+	number := formatNumber(value, decimals)
+	if unit != "" && !strings.Contains(number, ".") && len(number)+2 <= maxDigits {
+		number += ".0"
+	}
+	if len(number) <= maxDigits {
+		return number
+	}
+	return ""
+}
+
+func fallbackInteger(value float64, unit string, maxDigits int) string {
+	number := fmt.Sprintf("%.0f", math.Round(value))
+	if len(number) > maxDigits {
+		number = number[len(number)-maxDigits:]
+	}
+	if unit != "" && !strings.Contains(number, ".") && len(number)+2 <= maxDigits {
+		number += ".0"
+	}
+	if len(number) > maxDigits {
+		return ""
+	}
+	return number
+}
+
+func padResultText(sign, number, unit string, width int) string {
+	result := sign + number + unit
+	if len(result) < width {
+		return strings.Repeat(" ", width-len(result)) + result
+	}
+	if len(result) > width {
+		return result[len(result)-width:]
+	}
+	return result
+}
+
+func padLeftToWidth(text string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if len(text) < width {
+		return strings.Repeat(" ", width-len(text)) + text
+	}
+	if len(text) > width {
+		return text[len(text)-width:]
+	}
+	return text
 }
 
 func roundToDecimals(value float64, decimals int) float64 {
